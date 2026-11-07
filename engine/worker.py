@@ -1,0 +1,100 @@
+"""Separate single-worker process. Request-server lifetime is irrelevant."""
+import fcntl
+import json
+from pathlib import Path
+import time
+
+from .city import CityRegistry, verify_service
+from .contracts import InputError
+from .drafts import prepare_draft
+from .jobs import Jobs, Conflict
+from .routing import OSRM, Cancelled
+from .solver import solve, scenario_hash
+from .storage import write_json_atomic
+
+
+class Worker:
+    def __init__(self,root='runs',data_root='data',provider_factory=OSRM):
+        self.jobs=Jobs(root); self.registry=CityRegistry(data_root)
+        self.provider_factory=provider_factory
+        self.lock=None
+
+    def acquire(self):
+        self.lock=(self.jobs.root/'worker.lock').open('a')
+        try: fcntl.flock(self.lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:
+            self.lock.close(); self.lock=None
+            raise RuntimeError('another worker already owns this runs directory')
+        (self.jobs.root/'worker.stop').unlink(missing_ok=True)
+        self.jobs.recover()
+        return self
+
+    def close(self):
+        if self.lock:
+            self.lock.close(); self.lock=None
+
+    def execute_one(self):
+        if self.lock is None: raise RuntimeError('worker lock required')
+        job=self.jobs.claim()
+        if job is None: return False
+        id=job['id']; request=job['request']; started=time.monotonic(); last_metric=-1; omitted=0
+        def cancelled(): return self.jobs.get(id)['cancel_requested']
+        def emit(kind,payload,elapsed=None):
+            nonlocal last_metric,omitted
+            now=time.monotonic()-started
+            if kind=='metric':
+                if now-last_metric<1:
+                    omitted+=1; return
+                last_metric=now
+            self.jobs.emit(id,kind,payload,elapsed if elapsed is not None else now)
+        result=None
+        try:
+            if cancelled(): raise Cancelled('cancelled before computation')
+            if job['kind']=='prepare':
+                draft=self.jobs.draft(request['draft_id'])
+                # The queued request embeds the immutable revision, even if the editor changes later.
+                data=request['draft']
+                manifest=self.registry.get(data['city_id'])
+                if manifest['manifest_hash']!=data['dataset_hash']: raise InputError('installed dataset changed')
+                if self.provider_factory is OSRM:
+                    verify_service(self.registry,manifest)
+                result=prepare_draft(data,manifest,self.provider_factory(cancelled=cancelled),emit,cancelled)
+                emit('prepared',dict(scenario_hash=scenario_hash(result),preparation_s=result['preparation_s']))
+                status='completed'; reason='prepared'; feasibility='unknown'
+            else:
+                prepared=self.jobs.result(request['prepared_job_id'])
+                if scenario_hash(prepared)!=request['scenario_hash']: raise Conflict('prepared scenario changed')
+                result=solve(prepared,seed=request['seed'],budget_s=request['budget_s'],
+                    max_evaluations=request['max_evaluations'],restarts=request['restarts'],observe=emit,cancelled=cancelled)
+                result['run_id']=id
+                status=result['job_status']; reason=result['termination_reason']; feasibility=result['feasibility']
+            if cancelled() and status!='cancelled':
+                status='cancelled'; reason='cancelled'
+                if job['kind']=='solve':
+                    result['job_status']='cancelled'; result['termination_reason']='cancelled'
+            filename=f'{id}/result.json'
+            write_json_atomic(self.jobs.root/filename,result)
+            best=(dict(solution=result['solution'],validation=result['validation'],partial=False)
+                  if job['kind']=='solve' and result.get('solution') else None)
+            emit('terminal',dict(status=status,reason=reason,feasibility=feasibility,best=best,
+                                 optional_samples_omitted=omitted,trace_mode='accepted_changes'))
+            self.jobs.finish(id,status,reason,feasibility,result=filename)
+        except Cancelled:
+            emit('terminal',dict(status='cancelled',reason='cancelled',best=None,optional_samples_omitted=omitted))
+            self.jobs.finish(id,'cancelled','cancelled')
+        except Exception as exc:
+            # Preserve the diagnostic locally; return a bounded message rather than a raw traceback to UI.
+            message=f'{type(exc).__name__}: {str(exc)[:400]}'
+            try: emit('terminal',dict(status='failed',reason='execution_error',message=message,best=None))
+            except Exception: pass  # Disk failure must still attempt to mark metadata failed.
+            self.jobs.finish(id,'failed','execution_error',error=message)
+        return True
+
+    def run(self):
+        self.acquire()
+        try:
+            while not (self.jobs.root/'worker.stop').exists():
+                if not self.execute_one(): time.sleep(.25)
+        finally:
+            (self.jobs.root/'worker.stop').unlink(missing_ok=True)
+            self.close()

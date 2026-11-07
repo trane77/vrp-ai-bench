@@ -1,6 +1,8 @@
 # Implementation plan
 
-Status: planning only. No executable components or solver results exist. This plan refines the roadmap without authorizing implementation of later milestones.
+Status: steps 1–3 (M1) and steps 4–6 (M2) are implemented. The user authorized
+M2 with Bologna/Modena, local OSRM, editable demo appointments and an online
+basemap. Steps 7–9 remain planned; this does not authorize their implementation.
 
 ## Starting point and decisions
 
@@ -8,7 +10,7 @@ The local environment inspected on 2026-11-07 exposes Python 3.12.3, Node.js 24.
 
 Use the provisional semantics in requirements.md explicitly: collection-only, one depot, homogeneous vans, inclusive service-start windows and duration measured through depot return. Keep capacities, package properties and fuel coefficients configurable. No real fleet calibration is implied.
 
-The city, service area, depot and road provider remain open decisions needed before M2. They do not block synthetic domain tests in M1. Choose a project license before publication. Ai360 inspection and deployment remain deferred.
+M2 uses Bologna and Modena, configurable demo depots, 5 km service areas and local OSRM over a frozen Geofabrik Nord-Est snapshot. Choose a project license before publication. Ai360 inspection and deployment remain deferred.
 
 ## 1. Establish the executable foundation (M1)
 
@@ -80,4 +82,47 @@ Deliverable: the main computer controls and replays a persistent Ai360 worker ru
 
 ## Execution discipline
 
-Implement one slice at a time, with the next concrete target being steps 1–2 and then the complete M1 CLI baseline. At each boundary, record the commands actually run, acceptance results and remaining limitations; update README.md and roadmap.md consistently. Keep downloads, runs, datasets and checkpoints out of Git. Do not add later-stage dependencies or fabricate operational data to satisfy a demonstration.
+Implement one slice at a time. M1 and M2 are implemented; M3 is the next planned
+slice and requires controlled comparison decisions before new solver adapters. At each boundary,
+record commands actually run, acceptance results and remaining limitations; update
+README.md and roadmap.md consistently. Keep downloads, runs, datasets and
+checkpoints out of Git. Do not add later-stage dependencies or fabricate
+operational data to satisfy a demonstration.
+
+### M1 implementation notes
+
+- CPython 3.12 source-tree execution; no third-party dependencies or packaging
+  installation required. Empty dependency lock recorded in requirements.lock.
+- Strict v1 JSON schemas and semantic checks; M1 accepts synthetic inputs only.
+- Independent reconstruction includes loaded depot return, uncalibrated
+  category/load fuel estimates and optional idle consumption.
+- Seeded insertion/local search with explicit scalar weights, soft wall-clock
+  budget and optional deterministic evaluation limit. No proof of infeasibility
+  or optimality, no events/replay and no real-road integration.
+- Test command: `python3 -m unittest discover -s tests -v`. Acceptance includes
+  atomic CLI output and independent revalidation of saved results. Full interface
+  semantics and timing exclusions are documented in README.md and schemas/README.md.
+- Manual CLI acceptance on CPython 3.12.3: validate the two-stop scenario, solve
+  with seed 42 and a 2-second budget into a temporary result, then independently
+  validate that saved run. All three commands returned 0. Recomputed fixture
+  totals: 90 seconds fleet elapsed, 6,000 meters and 0.74 liters estimated fuel;
+  one used van out of two. These synthetic totals are not a performance benchmark.
+
+### M2 implementation notes
+
+- Real-road preparation, artifact/manifest hashes and OSRM image/profile identity;
+  no host configuration changes, external routing fallback or Git-stored data.
+- Backward-readable v1 plus road scenario/run v2; independently validated CPU
+  solutions. Appointments remain synthetic even on real roads.
+- Durable SQLite queue, separate worker, cooperative cancellation, interrupted-job
+  recovery, fsynced event journal, snapshots and WebSocket reconnection.
+- Local Italian React client with map editing, vehicle details, timelines,
+  recorded search replay, interpolated route playback and persistent history.
+- Real Bologna/Modena acceptance and browser verification commands are recorded in
+  [M2 local operations](m2-local.md). Result manifests, traces, browser screenshots
+  and timing measurements remain outside Git. No M3/AI/Ai360 claims are made.
+
+M2 verification: 49 Python tests, 6 client unit tests, production build and 4
+Chromium checks passed, including the real-city acceptance flow. The software-WebGL
+playback p95 was about 100 ms; the provisional 50 ms target remains unmet and is
+recorded as a prototype limitation, not hidden by the functional test result.

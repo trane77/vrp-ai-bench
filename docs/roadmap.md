@@ -1,31 +1,45 @@
 # Roadmap
 
-Only M0 documentation is currently implemented. All later milestones are planned.
+M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3–M5 remain planned.
 
 ## M0 — Requirements and repository
 
 - [x] Capture confirmed scope, defaults and open decisions.
 - [x] Define architecture, interface direction and evaluation protocol.
 - [x] Establish development guidance and ignore generated artifacts.
-- [ ] Select initial city and inspect development runtimes before implementation.
+- [x] Inspect the development runtime: CPython 3.12.3 used for M1 checks.
+- [x] Select Bologna and Modena for M2 demonstration datasets.
 
 Acceptance: documents are consistent, linked, and make no unsupported implementation or performance claims.
 
 ## M1 — Domain model and independently validated baseline
 
-- Versioned scenarios/results, time/load accounting and deterministic fuel model.
-- CPU classical solver, one depot, 1–5 vans, both service modes, windows and duration limit.
-- Small synthetic fixtures with known outcomes and explicit provenance.
+- [x] Versioned scenarios/results, time/load accounting and deterministic fuel model.
+- [x] CPU classical solver, one depot, 1–5 vans, both service modes, windows and duration limit.
+- [x] Small synthetic fixtures with known outcomes and explicit provenance.
 
 Acceptance: independent validation catches duplicate/missing stops, capacity violations, late starts and late depot returns; hand-calculated schedules agree; impossible and timeout cases are distinguished. No UI required to run and save a fixture.
 
+Verification: `python3 -m unittest discover -s tests -v` covers domain invariants,
+CPU search and end-to-end CLI publication/revalidation. Impossible-fixture search
+failure is reported as unknown feasibility, distinct from budget exhaustion;
+M1 provides no infeasibility proof. See README.md for executable commands.
+
 ## M2 — First end-to-end city experience
 
-- Prepare first real city dataset and routing paths with provenance; build installed-city selector.
-- Service/worker separation, job lifecycle and durable event recording.
-- Styled client, route map, timelines, metrics, search replay and route playback.
+- [x] Prepare Bologna/Modena datasets and routing paths with provenance; installed-city selector.
+- [x] Service/worker separation, job lifecycle and durable event recording.
+- [x] Styled client, route map, timelines, metrics, search replay and route playback.
 
 Acceptance: launch a real baseline run, inspect its verified solution, close/reopen the client and replay the saved result. Replay terminal state matches saved solution metrics. A second installed city can be selected without mixing datasets. Performance is measured on the actual client.
+
+Verification: both 20-stop seeded city demos ran through real local OSRM and
+produced independently validated feasible solutions; terminal snapshots matched
+saved results. Browser checks cover closing/reopening during a job, replay position,
+map editing and Modena with online tiles blocked and reduced motion. Client frame
+intervals are measured separately from solving. The measured SwiftShader playback
+p95 is about 100 ms; the provisional 50 ms target remains unmet. Commands, provenance and remaining
+limits are documented in [M2 local operations](m2-local.md).
 
 ## M3 — Comparative experiments
 

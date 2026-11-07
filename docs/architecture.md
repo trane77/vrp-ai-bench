@@ -12,7 +12,13 @@
 | Map | MapLibre GL JS and deck.gl | City rendering and animated route layers |
 | Storage | SQLite and versioned event files | Job metadata, results, checkpoints and replay |
 
-This is an architectural selection, not a verified dependency matrix. Pin compatible versions when creating executable components. The road-routing provider and city extraction pipeline remain undecided; map rendering does not supply travel-time matrices.
+This is an architectural selection, not a verified dependency matrix. Pin compatible versions when creating executable components. M2 uses local OSRM over a Geofabrik Nord-Est snapshot; map rendering does not supply travel-time matrices.
+
+M1 implements the standard-library Python domain, independent validator and CPU
+heuristic. M2 adds FastAPI, a separately launched worker, SQLite/event journals,
+local OSRM preparation and the React/MapLibre/deck.gl client. OR-Tools, PyTorch and
+Ai360 deployment remain planned. See [M2 operations](m2-local.md) for current
+contracts, job recovery, timing exclusions and limitations.
 
 ## Boundaries
 

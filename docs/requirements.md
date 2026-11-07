@@ -71,7 +71,7 @@ The selected road-path policy must be recorded: choosing only the fastest road p
 
 ## City data and experiments
 
-Each experiment references one city dataset version, road-network provenance and license, service area, depot, snapped stop positions and travel/path data. Save generation rules and seeds. Selection initially covers installed city datasets; arbitrary city acquisition is a separate preparation operation. The first city is not chosen yet.
+Each experiment references one city dataset version, road-network provenance and license, service area, depot, snapped stop positions and travel/path data. Save generation rules and seeds. Selection initially covers installed city datasets; arbitrary city acquisition is a separate preparation operation. Bologna and Modena are the selected M2 demonstration cities; their depots are configurable demo locations, not real fleet premises.
 
 Store configuration, algorithm/model version, seeds, machine/runtime information, wall-clock limits, objective policy, solution metrics, validator outcome and replay references. Synthetic fixtures must be labeled and cannot be presented as real road routing.
 

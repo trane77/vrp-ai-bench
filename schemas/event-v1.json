@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsed_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "kind": {
+      "enum": [
+        "initial",
+        "accepted_insertion",
+        "accepted_move",
+        "feasible_best",
+        "metric",
+        "prepared",
+        "terminal",
+        "recovered"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "job_id",
+    "seq",
+    "elapsed_s",
+    "kind",
+    "payload"
+  ],
+  "additionalProperties": false
+}

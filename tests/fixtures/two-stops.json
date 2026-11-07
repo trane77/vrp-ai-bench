@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "id": "synthetic-two-stops",
+  "provenance": {
+    "kind": "synthetic",
+    "description": "Hand-authored fixture; not real road routing. No external data.",
+    "dataset_id": "hand-two-stops",
+    "dataset_version": "1",
+    "path_policy": "fixed_directed_paths"
+  },
+  "reference_instant": "2026-01-01T00:00:00+00:00",
+  "timezone": "Europe/Rome",
+  "start_s": 0,
+  "depot_id": "depot",
+  "vehicle_ids": [
+    "van-1",
+    "van-2"
+  ],
+  "capacity": {
+    "mass_kg": 100,
+    "volume_m3": 1
+  },
+  "duration_cap_s": 90,
+  "stops": [
+    {
+      "id": "a",
+      "window_open_s": 20,
+      "window_close_s": 20,
+      "packages": 2,
+      "mass_kg": 10,
+      "volume_m3": 0.1
+    },
+    {
+      "id": "b",
+      "window_open_s": 50,
+      "window_close_s": 50,
+      "packages": 1,
+      "mass_kg": 20,
+      "volume_m3": 0.2
+    }
+  ],
+  "legs": [
+    {
+      "source": "depot",
+      "target": "a",
+      "reachable": true,
+      "travel_s": 10,
+      "segments": [
+        {
+          "distance_m": 1000,
+          "driving_category": "urban"
+        }
+      ]
+    },
+    {
+      "source": "a",
+      "target": "b",
+      "reachable": true,
+      "travel_s": 20,
+      "segments": [
+        {
+          "distance_m": 2000,
+          "driving_category": "urban"
+        }
+      ]
+    },
+    {
+      "source": "b",
+      "target": "depot",
+      "reachable": true,
+      "travel_s": 30,
+      "segments": [
+        {
+          "distance_m": 3000,
+          "driving_category": "urban"
+        }
+      ]
+    },
+    {
+      "source": "depot",
+      "target": "b",
+      "reachable": true,
+      "travel_s": 50,
+      "segments": [
+        {
+          "distance_m": 5000,
+          "driving_category": "urban"
+        }
+      ]
+    },
+    {
+      "source": "b",
+      "target": "a",
+      "reachable": true,
+      "travel_s": 60,
+      "segments": [
+        {
+          "distance_m": 6000,
+          "driving_category": "urban"
+        }
+      ]
+    },
+    {
+      "source": "a",
+      "target": "depot",
+      "reachable": true,
+      "travel_s": 40,
+      "segments": [
+        {
+          "distance_m": 4000,
+          "driving_category": "urban"
+        }
+      ]
+    }
+  ],
+  "service": {
+    "mode": "constant",
+    "constant_s": 10,
+    "fixed_s": 4,
+    "per_package_s": 3
+  },
+  "fuel_model": {
+    "version": "linear-load-v1",
+    "calibration": "uncalibrated",
+    "label": "experimental estimate",
+    "categories": {
+      "urban": {
+        "base_l_per_km": 0.1,
+        "load_l_per_km_kg": 0.001
+      }
+    },
+    "idle_policy": "waiting_and_service",
+    "idle_l_per_s": 0.001,
+    "kind": "load_dependent"
+  },
+  "objective": {
+    "time_weight": 0.5,
+    "fuel_weight": 0.5,
+    "time_scale_s": 100,
+    "fuel_scale_l": 1
+  }
+}

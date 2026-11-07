@@ -1,0 +1,14 @@
+[project]
+name = "vrp-ai"
+version = "0.2.0"
+description = "CPU routing research baseline with independent validation"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[project.optional-dependencies]
+service = ["fastapi==0.162.1", "uvicorn==0.54.0", "websockets==17.4"]
+test = ["httpx==0.28.1"]
+
+[tool.vrp-ai]
+execution = "source-tree: python -m engine"
+test-command = "python -m unittest discover -s tests -v"
