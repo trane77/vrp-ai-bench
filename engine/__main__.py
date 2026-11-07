@@ -45,8 +45,31 @@ def main(argv=None):
     serve.add_argument('--data-root', default='data')
     serve.add_argument('--host', choices=['127.0.0.1','localhost','::1'], default='127.0.0.1')
     serve.add_argument('--port', type=int, default=8000)
+    experiment = commands.add_parser('experiment', help='frozen classical pilot')
+    experiment.add_argument('action', choices=['freeze','run','status','report'])
+    experiment.add_argument('inputs', nargs='*')
+    experiment.add_argument('--output')
+    experiment.add_argument('--root', default='runs')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'experiment':
+            from .experiments import freeze, report
+            from .jobs import Jobs
+            jobs = Jobs(args.root)
+            if args.action == 'freeze':
+                if len(args.inputs)!=2 or not args.output: raise InputError('freeze requires two scenario paths and --output')
+                value = freeze([load_json(p) for p in args.inputs])
+                write_json_atomic(args.output, value)
+                print(json.dumps(dict(manifest=args.output, hash=value['manifest_hash'], cases=len(value['cases']))))
+            elif args.action == 'run':
+                if len(args.inputs)!=1: raise InputError('run requires a manifest path')
+                print(json.dumps(jobs.submit('experiment', dict(manifest=load_json(args.inputs[0])))))
+            elif args.action == 'status':
+                print(json.dumps(jobs.get(args.inputs[0]) if args.inputs else [j for j in jobs.list() if j['kind']=='experiment']))
+            else:
+                if len(args.inputs)!=1: raise InputError('report requires a campaign job id')
+                print(json.dumps(report(jobs.root/args.inputs[0])))
+            return 0
         if args.command == 'city':
             from .city import CityRegistry, prepare, serve as serve_osrm, docker
             registry = CityRegistry(args.data_root)
@@ -89,10 +112,10 @@ def main(argv=None):
             print(json.dumps(dict(valid=True, scenario_id=scenario['id'])))
             return 0
         document = load_json(args.solution)
-        if isinstance(document, dict) and 'run_id' in document:
+        if isinstance(document, dict) and ('run_id' in document or document.get('kind') == 'experiment_run'):
             check(document, run_schema(document))
             embedded = validate_scenario(document['scenario'])
-            if scenario_hash(embedded) != document['scenario_hash'] or scenario_hash(scenario) != document['scenario_hash']:
+            if scenario_hash(embedded) != document['scenario_hash'] or scenario_hash(scenario) != document.get('original_scenario_hash',document['scenario_hash']):
                 raise InputError('run scenario hash does not match supplied scenario')
             solution = document['solution']
             if solution is None:

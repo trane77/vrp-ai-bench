@@ -1349,3 +1349,21 @@ footer > span {
   margin: 9px auto 0;
   font-size: 10px;
 }
+.comparison-section { padding: 24px; }
+.comparison-section h2,.comparison-section h3 { margin: 22px 0 12px; }
+.comparison-section p { color: #a6b5c5; margin: 12px 0; }
+.comparison-section label { display: inline-flex; gap: 10px; margin: 8px; align-items: center; }
+.comparison-filters { display: flex; flex-wrap: wrap; }
+.comparison-table { overflow: auto; max-height: 450px; }
+.comparison-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.comparison-table td,.comparison-table th { padding: 10px; border-bottom: 1px solid #27313e; text-align: left; }
+.comparison-section svg { width: min(100%,800px); display: block; }
+.comparison-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.comparison-maps > div { position: relative; height: 420px; }
+.comparison-maps .map-container { height: 350px; }
+@media(max-width:800px) { .comparison-maps { grid-template-columns: 1fr; } }
+.comparison-maps .map-shell { height: 350px; }
+.comparison-section a { color: #3cdbb7; margin-right: 12px; }
+.case-status.failed { color: #ff9a9a; }
+.case-status.cancelled { color: #f7b862; }
+.case-status.completed { color: #3cdbb7; }

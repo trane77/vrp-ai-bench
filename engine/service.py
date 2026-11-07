@@ -1,5 +1,6 @@
 """Loopback HTTP/WebSocket facade; computation belongs to engine.worker."""
 import asyncio
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -18,6 +19,9 @@ from .solver import scenario_hash
 
 class Strict(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True,allow_inf_nan=False)
+
+class NewExperiment(Strict):
+    manifest: dict
 
 class NewDraft(Strict):
     city_id: str
@@ -69,6 +73,13 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
     async def missing(request,exc):
         return JSONResponse(status_code=404,content={'detail':str(exc)})
 
+    def public_job(job):
+        if job['kind']=='experiment':
+            job=dict(job,request=dict(job['request']))
+            manifest=job['request']['manifest']
+            job['request']['manifest']={k:manifest[k] for k in ('manifest_hash','cases','main_cases','control_cases')}
+        return job
+
     @app.get('/api/v1/health')
     def health(): return dict(service='ok',worker='separate process',schema_version=1)
 
@@ -111,13 +122,13 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
         return jobs.submit(body.kind,request)
 
     @app.get('/api/v1/jobs')
-    def list_jobs(): return jobs.list()
+    def list_jobs(): return [public_job(j) for j in jobs.list()]
 
     @app.get('/api/v1/jobs/{id}')
-    def get_job(id:str): return jobs.get(id)
+    def get_job(id:str): return public_job(jobs.get(id))
 
     @app.post('/api/v1/jobs/{id}/cancel')
-    def cancel(id:str): return jobs.cancel(id)
+    def cancel(id:str): return public_job(jobs.cancel(id))
 
     @app.get('/api/v1/jobs/{id}/result')
     def result(id:str): return jobs.result(id)
@@ -164,6 +175,81 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
         finally:
             try: await socket.close()
             except RuntimeError: pass
+
+    @app.post('/api/v1/experiments',status_code=202)
+    def new_experiment(body:NewExperiment):
+        return public_job(jobs.submit('experiment',dict(manifest=body.manifest)))
+
+    @app.get('/api/v1/experiments')
+    def experiments(): return [public_job(j) for j in jobs.list() if j['kind']=='experiment']
+
+    def experiment(id):
+        job=jobs.get(id)
+        if job['kind']!='experiment': raise InputError('experiment job required')
+        return job
+
+    @app.get('/api/v1/experiments/{id}')
+    def experiment_status(id:str): return public_job(experiment(id))
+
+    @app.post('/api/v1/experiments/{id}/cancel')
+    def experiment_cancel(id:str):
+        experiment(id)
+        return public_job(jobs.cancel(id))
+
+    @app.get('/api/v1/experiments/{id}/manifest')
+    def experiment_manifest(id:str): return experiment(id)['request']['manifest']
+
+    @app.get('/api/v1/experiments/{id}/report')
+    def experiment_report(id:str):
+        experiment(id)
+        from .contracts import load_json
+        path=jobs.root/id/'report.json'
+        if not path.exists(): raise Conflict('report not yet published')
+        return load_json(path)
+
+    @app.get('/api/v1/experiments/{id}/export/{format}')
+    def experiment_export(id:str,format:str):
+        from fastapi.responses import FileResponse
+        experiment(id)
+        if format not in ('json','csv','md'): raise InputError('unsupported export')
+        path=jobs.root/id/f'report.{format}'
+        if not path.exists(): raise Conflict('report not yet published')
+        return FileResponse(path,filename=path.name)
+
+    @app.get('/api/v1/experiments/{id}/cases')
+    def experiment_cases(id:str):
+        job=experiment(id)
+        return [dict(c, available=(jobs.root/id/'cases'/c['id']/'result.json').exists()) for c in job['request']['manifest']['cases']]
+
+    @lru_cache(maxsize=16)
+    def allowed_case_ids(id):
+        return frozenset(c['id'] for c in experiment(id)['request']['manifest']['cases'])
+
+    def case_path(id,case_id):
+        if case_id not in allowed_case_ids(id): raise KeyError('unknown case')
+        return jobs.root/id/'cases'/case_id
+
+    @app.get('/api/v1/experiments/{id}/cases/{case_id}')
+    def experiment_case(id:str,case_id:str,view:str='full'):
+        from .contracts import load_json
+        path=case_path(id,case_id)/'result.json'
+        if not path.exists(): raise Conflict('case not yet published')
+        if view not in ('full','summary'): raise InputError('unknown case view')
+        summary=path.with_name('summary.json')
+        if view=='summary' and summary.exists(): return load_json(summary)
+        result=load_json(path)
+        if view=='summary':
+            from .experiments import case_summary
+            return case_summary(result)
+        return result
+
+    @app.get('/api/v1/experiments/{id}/cases/{case_id}/events')
+    def experiment_case_events(id:str,case_id:str):
+        import json
+        path=case_path(id,case_id)/'events.jsonl'
+        if not path.exists(): return []
+        # A worker may be appending its next line. Expose only complete records.
+        return [json.loads(line) for line in path.read_text().splitlines(keepends=True) if line.endswith('\n')]
 
     if Path(client_dir).is_dir():
         app.mount('/',StaticFiles(directory=client_dir,html=True),name='client')

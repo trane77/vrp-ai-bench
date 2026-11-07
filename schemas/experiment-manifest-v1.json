@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "experiment_manifest"
+      ]
+    },
+    "manifest_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instance": {
+            "enum": [
+              "bologna",
+              "modena"
+            ]
+          },
+          "method": {
+            "enum": [
+              "ordered",
+              "shuffled",
+              "ortools"
+            ]
+          },
+          "budget_s": {
+            "enum": [
+              5,
+              15
+            ]
+          },
+          "repetition": {
+            "enum": [
+              0,
+              1,
+              2
+            ]
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_weight": {
+            "enum": [
+              0,
+              0.5,
+              1
+            ]
+          },
+          "recording": {
+            "type": "boolean"
+          },
+          "control": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "instance",
+          "method",
+          "budget_s",
+          "repetition",
+          "seed",
+          "time_weight",
+          "recording",
+          "control"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 102,
+      "maxItems": 102
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "main_cases": {
+      "const": 84
+    },
+    "control_cases": {
+      "const": 18
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "manifest_hash",
+    "cases",
+    "instances",
+    "main_cases",
+    "control_cases"
+  ],
+  "additionalProperties": true
+}

@@ -16,8 +16,8 @@ This is an architectural selection, not a verified dependency matrix. Pin compat
 
 M1 implements the standard-library Python domain, independent validator and CPU
 heuristic. M2 adds FastAPI, a separately launched worker, SQLite/event journals,
-local OSRM preparation and the React/MapLibre/deck.gl client. OR-Tools, PyTorch and
-Ai360 deployment remain planned. See [M2 operations](m2-local.md) for current
+local OSRM preparation and the React/MapLibre/deck.gl client. M3 adds an optional OR-Tools adapter and isolated sequential experiment cases. PyTorch and
+Ai360 deployment remain planned. See [M3 comparisons](m3-comparisons.md). See [M2 operations](m2-local.md) for current
 contracts, job recovery, timing exclusions and limitations.
 
 ## Boundaries

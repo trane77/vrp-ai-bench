@@ -33,7 +33,8 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import MapView, { colors } from "./MapView";
+import { colors } from "./colors";
+const MapView = React.lazy(() => import("./MapView"));
 import { cityTime, emptyReplay, mergeEvents, stateAt } from "./replay";
 import { it } from "./it";
 import type {
@@ -49,6 +50,7 @@ import type {
   Validation,
 } from "./types";
 import "./style.css";
+import Comparisons from "./Comparisons";
 
 async function api<T>(
   path: string,
@@ -179,7 +181,10 @@ function App() {
     }
   };
   const refreshHistory = useCallback(
-    () => api<Job[]>("/jobs").then(setHistory),
+    () =>
+      api<Job[]>("/jobs").then((jobs) =>
+        setHistory(jobs.filter((j) => j.kind !== ("experiment" as string))),
+      ),
     [],
   );
   useEffect(() => {
@@ -989,19 +994,21 @@ function App() {
               </div>
             </div>
             <div className="map-container">
-              <MapView
-                center={center}
-                draft={draft}
-                scenario={scenario}
-                solution={display?.solution ?? null}
-                validation={validation}
-                elapsed={mode === "route" ? routeTime : null}
-                selected={selected}
-                tool={tool}
-                onSelect={setSelected}
-                onPoint={point}
-                onFrame={setFrameMs}
-              />
+              <React.Suspense fallback={<p>Caricamento mappa…</p>}>
+                <MapView
+                  center={center}
+                  draft={draft}
+                  scenario={scenario}
+                  solution={display?.solution ?? null}
+                  validation={validation}
+                  elapsed={mode === "route" ? routeTime : null}
+                  selected={selected}
+                  tool={tool}
+                  onSelect={setSelected}
+                  onPoint={point}
+                  onFrame={setFrameMs}
+                />
+              </React.Suspense>
               {!draft && (
                 <div className="empty-state">
                   <div className="empty-icon">
@@ -1536,6 +1543,7 @@ function App() {
             </div>
           )}
         </section>
+        <Comparisons />
         <footer>
           <span>
             <Check size={12} />

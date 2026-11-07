@@ -80,7 +80,7 @@ class StopSearch(Exception):
 
 def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
           clock=time.monotonic, startup_s=0.0, preparation_s=0.0,
-          observe=None, cancelled=None):
+          observe=None, cancelled=None, selection_policy="ordered", candidate_observer=None):
     """Budget starts before scenario-specific validation/preparation.
 
     max_evaluations allows deterministic comparisons when wall time is ample.
@@ -99,6 +99,9 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
     digest = scenario_hash(s)
     runtime = runtime_info()
     rng = random.Random(seed)
+    selection_rng = random.Random(seed)
+    if selection_policy not in ("ordered", "shuffled"):
+        raise InputError("unsupported selection policy")
     evaluations = 0
     best, best_score, first = None, math.inf, None
     search_started = clock()
@@ -129,6 +132,8 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
         if observe is not None and clock() - last_metric >= 1:
             emit('metric', dict(evaluations=evaluations))
             last_metric = clock()
+        if not partial and report["feasible"] and candidate_observer is not None:
+            candidate_observer(candidate, report, clock() - started)
         return report
 
     def remember(routes, report):
@@ -176,7 +181,11 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
             current_report = report
             while True:
                 improved = False
-                for candidate, move_type in neighbor_moves(routes):
+                moves = neighbor_moves(routes)
+                if selection_policy == "shuffled":
+                    moves = list(moves)
+                    selection_rng.shuffle(moves)
+                for candidate, move_type in moves:
                     report = evaluate(candidate)
                     if report['feasible']:
                         score = objective_score(s, report)

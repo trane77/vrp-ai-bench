@@ -2,7 +2,7 @@
 
 Status: steps 1–3 (M1) and steps 4–6 (M2) are implemented. The user authorized
 M2 with Bologna/Modena, local OSRM, editable demo appointments and an online
-basemap. Steps 7–9 remain planned; this does not authorize their implementation.
+basemap. Step 7 is implemented under the confirmed M3 pilot scope; steps 8–9 remain planned and are not authorized by M3. See [M3 operations](m3-comparisons.md) for actual verification and limitations.
 
 ## Starting point and decisions
 
@@ -82,8 +82,7 @@ Deliverable: the main computer controls and replays a persistent Ai360 worker ru
 
 ## Execution discipline
 
-Implement one slice at a time. M1 and M2 are implemented; M3 is the next planned
-slice and requires controlled comparison decisions before new solver adapters. At each boundary,
+Implement one slice at a time. M1 and M2 are implemented; M3 follows the confirmed two-instance classical pilot; learned search and remote deployment remain separate future work. At each boundary,
 record commands actually run, acceptance results and remaining limitations; update
 README.md and roadmap.md consistently. Keep downloads, runs, datasets and
 checkpoints out of Git. Do not add later-stage dependencies or fabricate

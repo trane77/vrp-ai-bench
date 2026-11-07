@@ -57,3 +57,15 @@ A separately launched single worker owns computation. HTTP disconnection does no
 cancel it; worker interruption is recorded without automatic continuation.
 Scenario/run v2 adds road provenance while v1 remains readable. See
 [M2 operations and limitations](m2-local.md) for API, persistence and replay details.
+
+## M3 confirmed pilot
+
+The user confirmed two frozen M2 witness demos (20 stops each, Bologna/Modena),
+5/15-second preference budgets, custom seeds 0/1/2, three temporal repetitions for
+OR-Tools and three normalized time/fuel preferences. The 84 main cases reuse
+custom time-only cells in both analyses; 18 additional 5-second time-only controls
+measure durable recording overhead. Scheduling seed is 42. Witness targets and
+hypervolume references are frozen before the campaign and are not certified optima.
+OR-Tools participates only in the elapsed-time family. See
+[M3 implementation and timing](m3-comparisons.md) for executable contracts and
+measurement limitations. M4 learning and M5 deployment remain outside this scope.

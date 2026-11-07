@@ -89,3 +89,18 @@ artifact identity is checked by city preparation/verification and by the worker'
 OSRM container check, rather than inferred from a geometry picture. See
 [M2 contracts, endpoints and replay semantics](../docs/m2-local.md) for the draft
 revision workflow, job lifecycle, snapshot recovery and timing boundaries.
+
+M3 retains scenario v1/v2 and solution v1. Experimental envelopes are
+[run v3](run-v3.json), [manifest v1](experiment-manifest-v1.json) and
+[report v1](experiment-report-v1.json); the pilot manifest has additional semantic
+checks for its exact design, scenario hashes and independently validated frozen
+references. Run v3 includes the original scenario hash and the effective scenario
+hash/objective separately. Failed cases remain envelopes with explicit errors,
+rather than fabricated feasible runs. See [M3 operations](../docs/m3-comparisons.md).
+Case event journals use event v1 with a campaign/case job identifier; their replay
+contains only validated incumbent improvements. Controls have no event journal.
+
+New experimental cases carry a qualified campaign/case `run_id`. Legacy v3
+external envelopes are also recognized by their explicit `kind`; the frozen pilot
+files retain their original metadata. Compact case views have a separate version-1
+`experiment_case_summary` envelope and never replace the full run artifact.

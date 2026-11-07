@@ -1,6 +1,6 @@
 # Roadmap
 
-M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3–M5 remain planned.
+M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3 comparison tooling is implemented; M4–M5 remain planned. Full pilot acceptance is recorded in the M3 operations document.
 
 ## M0 — Requirements and repository
 
@@ -43,8 +43,11 @@ limits are documented in [M2 local operations](m2-local.md).
 
 ## M3 — Comparative experiments
 
-- Matched classical baselines, budget controls, paired scenarios and reporting.
-- Multiple time/fuel preferences and nondominated solution reporting.
+- [x] Ordered/shuffled custom policies and optional OR-Tools elapsed-time adapter.
+- [x] Frozen 84-case main design plus 18 recording controls, isolated queue execution and descriptive exports.
+- [x] Multiple time/fuel preferences, found nondominated alternatives, fixed hypervolume references and compatible client replay.
+
+Verification and full-pilot evidence: [M3 operations](m3-comparisons.md). No method superiority is required or inferred from this constructed two-instance pilot.
 
 Acceptance: a reproducible command/configuration produces comparable results and manifests; computation and rendering timings are separated; model estimates and reference solution status are explicit.
 

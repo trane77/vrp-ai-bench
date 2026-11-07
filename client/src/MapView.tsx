@@ -8,13 +8,7 @@ import type { Coord, Draft, Scenario, Solution, Validation } from "./types";
 import { position } from "./replay";
 import { it } from "./it";
 import "maplibre-gl/dist/maplibre-gl.css";
-export const colors: [number, number, number][] = [
-  [60, 219, 183],
-  [113, 154, 255],
-  [247, 184, 98],
-  [216, 130, 245],
-  [255, 125, 139],
-];
+import { colors } from "./colors";
 interface Props {
   center: Coord;
   draft: Draft | null;

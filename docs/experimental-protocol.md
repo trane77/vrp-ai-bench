@@ -40,3 +40,11 @@ Feasibility rate; time to first feasible solution; time to a preregistered quali
 Time-to-target failures are censored at the budget and reported, never discarded. Report quality conditional on feasibility alongside overall feasibility rates. For multiple objectives, compare nondominated sets using fixed normalization/reference points established before evaluation; retain raw minutes and liters.
 
 Training time, data generation, tuning cost, energy if actually measured, and model size are separate costs. Do not invent energy estimates from runtime alone. Claims of superiority must state scenario scope, budget and uncertainty; negative or mixed results remain valid findings.
+
+## Implemented M3 pilot
+
+The confirmed two-instance, 84-case classical pilot plus 18 recording controls is
+documented in [M3 operations](m3-comparisons.md). Its fixed manifest is a constructed
+benchmark design, not train/validation/test evidence for learned policies or a
+representative sample of either city. The broader questions above remain research
+questions; this pilot verifies the comparison infrastructure and descriptive outputs.

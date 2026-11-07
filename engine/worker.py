@@ -50,7 +50,13 @@ class Worker:
         result=None
         try:
             if cancelled(): raise Cancelled('cancelled before computation')
-            if job['kind']=='prepare':
+            if job['kind']=='experiment':
+                from .experiments import campaign
+                result=campaign(self.jobs,id,request['manifest'])
+                status='cancelled' if cancelled() else 'completed'
+                reason='cancelled' if cancelled() else 'campaign_finished'
+                feasibility='unknown'
+            elif job['kind']=='prepare':
                 draft=self.jobs.draft(request['draft_id'])
                 # The queued request embeds the immutable revision, even if the editor changes later.
                 data=request['draft']

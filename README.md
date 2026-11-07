@@ -2,7 +2,7 @@
 
 A reproducible urban fleet-routing research laboratory: determine whether learned search improves solution quality and computation time compared with classical methods, while making the search observable through live visualization and replay.
 
-Status: M1 baseline and M2 local city laboratory implemented: road-backed scenarios, independent validation, durable jobs, an interactive client and recorded replay. No trained model, measured AI advantage or Ai360 deployment exists.
+Status: M1 baseline, M2 local city laboratory and M3 classical comparison tools implemented: road-backed scenarios, independent validation, durable jobs, an interactive client and recorded replay. No trained model, measured AI advantage or Ai360 deployment exists.
 
 ## Scope
 
@@ -22,10 +22,11 @@ Status: M1 baseline and M2 local city laboratory implemented: road-backed scenar
 - [Milestones and acceptance criteria](docs/roadmap.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [M2 local setup, contracts and verification](docs/m2-local.md)
+- [M3 frozen classical comparisons](docs/m3-comparisons.md)
 - [Project decisions](docs/decisions.md)
 - [Development instructions](AGENTS.md)
 
-Next milestone: M3, controlled classical comparisons. Hardware acceleration is optional and must be verified on the target machine.
+M3 adds frozen CLI campaigns, isolated classical solver comparisons, descriptive reports and a client comparison view. Full pilot verification is recorded in the M3 operations document. Hardware acceleration is optional and must be verified on the target machine.
 
 ## Run the local city laboratory
 
@@ -88,6 +89,6 @@ it remains `unknown`, not a proof. The standalone M1 CLI does not record replay 
 
 `engine/` contains contracts, accounting, solver, OSRM preparation/adapter, durable
 queue, worker and HTTP service. `client/` contains the local React application;
-`schemas/` defines v1/v2 interchange formats; `tests/` and client tests cover domain,
-queue, service, replay and browser acceptance. Comparative experiments, learned
+`schemas/` defines scenario v1/v2, experimental run v3 and manifest/report formats; `tests/` and client tests cover domain,
+queue, service, replay and browser acceptance. M3 includes the ordered/shuffled custom policies and an optional OR-Tools time adapter. Learned
 policy and remote deployment remain unimplemented.
