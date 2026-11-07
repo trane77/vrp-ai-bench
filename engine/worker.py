@@ -53,8 +53,18 @@ class Worker:
             if job['kind']=='experiment':
                 from .experiments import campaign
                 result=campaign(self.jobs,id,request['manifest'])
-                status='cancelled' if cancelled() else 'completed'
-                reason='cancelled' if cancelled() else 'campaign_finished'
+                status='cancelled' if cancelled() else ('completed' if result['completed']==result['total'] else 'failed')
+                reason='cancelled' if cancelled() else ('campaign_finished' if status=='completed' else 'campaign_incomplete')
+                feasibility='unknown'
+            elif job['kind'] in ('collect','train'):
+                if job['kind']=='collect':
+                    from .learn_data import collect
+                    result=collect(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+1500),cancelled=cancelled)
+                else:
+                    from .learn_train import train
+                    result=train(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+600),cancelled=cancelled,try_gpu=request.get('try_gpu',True))
+                status='completed' if result.get('status')=='completed' else 'failed'
+                reason='phase_finished' if status=='completed' else 'phase_incomplete'
                 feasibility='unknown'
             elif job['kind']=='prepare':
                 draft=self.jobs.draft(request['draft_id'])

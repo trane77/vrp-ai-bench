@@ -84,6 +84,14 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
                     inward=provider.route(location,locations[0],manifest['manifest_hash'])
                     if not outward['reachable'] or not inward['reachable']:
                         raise InputError('sample disconnected from depot')
+                    # OSRM may snap route queries away from a nearest point on a
+                    # small disconnected component. Such a sample is not routable
+                    # at its recorded location and must enter recorded resampling.
+                    for leg in (outward,inward):
+                        for endpoint, point in ((leg['geometry'][0], locations[0] if leg['source']=='depot' else location),
+                                                (leg['geometry'][-1], locations[0] if leg['target']=='depot' else location)):
+                            if max(abs(a-b) for a,b in zip(endpoint,point['snapped'])) > .0001:
+                                raise InputError('sample route endpoint differs from nearest snap')
                 return location
             except InputError:
                 if not resample: raise

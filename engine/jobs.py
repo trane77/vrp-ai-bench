@@ -64,14 +64,14 @@ class Jobs:
         return self.draft(id)
 
     def submit(self,kind,request):
-        if kind not in ('prepare','solve','experiment'): raise InputError('unsupported job kind')
+        if kind not in ('prepare','solve','experiment','collect','train'): raise InputError('unsupported job kind')
         if kind == 'experiment':
             from .experiments import validate_manifest
             validate_manifest(request['manifest'])
         id=str(uuid.uuid4()); now=time.time()
         with self.connection() as db:
-            draft=db.execute('SELECT revision FROM drafts WHERE id=?',(request['draft_id'],)).fetchone() if kind != 'experiment' else None
-            if kind != 'experiment' and (draft is None or draft['revision']!=request['revision']):
+            draft=db.execute('SELECT revision FROM drafts WHERE id=?',(request['draft_id'],)).fetchone() if kind in ('prepare','solve') else None
+            if kind in ('prepare','solve') and (draft is None or draft['revision']!=request['revision']):
                 raise Conflict('draft revision is stale')
             db.execute('INSERT INTO jobs(id,kind,status,request,created,updated) VALUES(?,?,?,?,?,?)',
                        (id,kind,'queued',json.dumps(request),now,now))

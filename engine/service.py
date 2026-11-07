@@ -241,6 +241,9 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
         if view=='summary':
             from .experiments import case_summary
             return case_summary(result)
+        if result.get('schema_version')==4:
+            from .learn_evaluate import hydrate_run
+            return hydrate_run(jobs.root/id,result)
         return result
 
     @app.get('/api/v1/experiments/{id}/cases/{case_id}/events')

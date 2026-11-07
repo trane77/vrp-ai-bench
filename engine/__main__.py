@@ -50,8 +50,31 @@ def main(argv=None):
     experiment.add_argument('inputs', nargs='*')
     experiment.add_argument('--output')
     experiment.add_argument('--root', default='runs')
+    learn = commands.add_parser('learn', help='M4 supervised pipeline')
+    learn.add_argument('action', choices=['dataset','collect','train','evaluate','campaign','audit'])
+    learn.add_argument('input', nargs='?')
+    learn.add_argument('--output')
+    learn.add_argument('--checkpoint')
+    learn.add_argument('--root', default='runs/m4')
+    learn.add_argument('--data-root', default='data')
+    learn.add_argument('--cpu', action='store_true')
+    remote = commands.add_parser('remote', help='verified SSH batch transport')
+    remote.add_argument('action', choices=['doctor','submit','status','cancel','fetch'])
+    remote.add_argument('input', nargs='?')
+    remote.add_argument('--host', default='Ai360')
+    remote.add_argument('--image')
+    remote.add_argument('--output')
+    remote.add_argument('--root', default='runs/m4-imports')
     args = parser.parse_args(argv)
     try:
+        if args.command == 'learn':
+            from .learn_cli import execute
+            print(json.dumps(execute(args), allow_nan=False))
+            return 0
+        if args.command == 'remote':
+            from .remote import execute
+            print(json.dumps(execute(args), allow_nan=False))
+            return 0
         if args.command == 'experiment':
             from .experiments import freeze, report
             from .jobs import Jobs
@@ -114,6 +137,10 @@ def main(argv=None):
         document = load_json(args.solution)
         if isinstance(document, dict) and ('run_id' in document or document.get('kind') == 'experiment_run'):
             check(document, run_schema(document))
+            if document.get('schema_version') == 4:
+                from pathlib import Path
+                from .learn_evaluate import hydrate_run
+                document = hydrate_run(Path(args.solution).resolve().parent.parent.parent,document)
             embedded = validate_scenario(document['scenario'])
             if scenario_hash(embedded) != document['scenario_hash'] or scenario_hash(scenario) != document.get('original_scenario_hash',document['scenario_hash']):
                 raise InputError('run scenario hash does not match supplied scenario')

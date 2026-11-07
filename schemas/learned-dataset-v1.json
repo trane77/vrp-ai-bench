@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "learned_dataset"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "city": {
+            "enum": [
+              "bologna",
+              "modena"
+            ]
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "split": {
+            "enum": [
+              "training",
+              "validation",
+              "test"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scenario_hash": {
+            "type": "string",
+            "minLength": 1
+          },
+          "layout_hash": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "city",
+          "seed",
+          "split",
+          "path",
+          "scenario_hash",
+          "layout_hash"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 40,
+      "maxItems": 40
+    },
+    "source_sha256": {
+      "type": "string",
+      "minLength": 1
+    },
+    "constructed": {
+      "type": "boolean"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "dataset_hash": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "entries",
+    "source_sha256",
+    "constructed",
+    "scope",
+    "dataset_hash"
+  ],
+  "additionalProperties": false
+}

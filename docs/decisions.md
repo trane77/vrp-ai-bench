@@ -21,7 +21,7 @@ Collection-only service, single depot, identical vans, mandatory unsplit stops, 
 | Fuel coefficients and idle policy | M1 | Explicit uncalibrated model with versioned parameters |
 | Objective preferences | M3 | Present time/fuel alternatives; no hidden weights |
 | Compatible runtime versions | M1/M2 | CPython 3.12 and Node 24; resolved dependencies in lockfiles |
-| Ai360 OS, RAM and remote access | M5 | Inspect before deployment; do not assume GPU/NPU compatibility |
+| Ai360 OS, RAM and remote access | M4 batch / M5 LAN | M4 inspection and container GPU update verified; NPU and LAN deployment remain outside scope |
 | Project license and remote repository | Before publication | Undecided; local repository only |
 
 ## M1 implementation decisions
@@ -69,3 +69,14 @@ hypervolume references are frozen before the campaign and are not certified opti
 OR-Tools participates only in the elapsed-time family. See
 [M3 implementation and timing](m3-comparisons.md) for executable contracts and
 measurement limitations. M4 learning and M5 deployment remain outside this scope.
+
+## M4 confirmed scope
+
+The user authorized a supervised 30→32→16→2 move-ordering policy, 40 new
+road-backed 20-stop scenarios with frozen 24/8/8 splits, ordered/shuffled
+collection on training/validation only, and a 336-case held-out comparison.
+Training uses three seeds; checkpoint selection uses validation rank only.
+NumPy FP32 CPU inference is the primary solve runtime. Ai360 runs detached SSH
+batch workers in a digest-pinned application container, without host changes or
+LAN HTTP service. The NPU is excluded. See [M4 operations](m4-learning.md) for
+actual verification, frozen design, timing and remaining acceptance checks.

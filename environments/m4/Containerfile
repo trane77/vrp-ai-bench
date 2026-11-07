@@ -1,0 +1,5 @@
+FROM docker.io/rocm/pytorch@sha256:4960b7f8484c356246852455a1e4d7933933335f19cd408fd6763eee7e4401bc
+ENV OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+WORKDIR /app
+# Source and generated artifacts are mounted by remote submit, not baked into Git.
+ENTRYPOINT ["python", "-m", "engine"]

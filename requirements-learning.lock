@@ -1,0 +1,4 @@
+# Application runtime is frozen by environments/m4/Containerfile's base digest.
+# These packages are supplied by that image; no host installation is required.
+numpy==2.4.1
+torch==2.9.1+rocm7.1.1.git351ff442

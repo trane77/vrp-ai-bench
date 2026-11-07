@@ -39,14 +39,15 @@ class SolverRequest:
     cancelled: object = None
     candidate_observer: object = None
     preparation_s: float = 0
+    checkpoint: str | None = None
 
 
 def run_solver(request):
-    if request.method in ('ordered', 'shuffled'):
+    if request.method in ('ordered', 'shuffled', 'learned'):
         return solve(request.scenario, seed=request.seed, budget_s=request.budget_s,
                      selection_policy=request.method, observe=request.observe,
                      cancelled=request.cancelled, candidate_observer=request.candidate_observer,
-                     preparation_s=request.preparation_s)
+                     preparation_s=request.preparation_s, checkpoint=request.checkpoint)
     if request.method != 'ortools':
         raise InputError('unknown solver method')
     return ortools_solve(request)

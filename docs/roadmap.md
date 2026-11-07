@@ -1,6 +1,6 @@
 # Roadmap
 
-M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3 comparison tooling is implemented; M4–M5 remain planned. Full pilot acceptance is recorded in the M3 operations document.
+M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3 comparison tooling is implemented; M4 training and the full held-out campaign, audit, import and browser acceptance are verified. M5 LAN deployment remains planned. Full pilot acceptance is recorded in the M3 operations document.
 
 ## M0 — Requirements and repository
 
@@ -53,9 +53,11 @@ Acceptance: a reproducible command/configuration produces comparable results and
 
 ## M4 — Learned search
 
-- Train a policy to select improvements or destroy/repair choices.
-- Compare against identical operators with classical selection.
-- Held-out evaluation and training-cost accounting.
+- [x] Train a supervised move-ordering policy over shared classical operators.
+- [x] Freeze disjoint scenario splits, export a checked CPU model and record training cost.
+- [x] Complete all 336 held-out cases, independent audit, verified repeatable import and browser acceptance.
+
+Current evidence: [M4 operations](m4-learning.md).
 
 Acceptance: reproducible evaluation supports a scoped positive, neutral or negative result; AI superiority is not a release requirement.
 

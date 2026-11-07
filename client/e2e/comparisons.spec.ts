@@ -6,8 +6,9 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
 }) => {
   test.setTimeout(180000);
   const campaigns = await (await request.get("/api/v1/experiments")).json();
-  const campaign = process.env.VRP_M3_JOB
-    ? campaigns.find((c: any) => c.id === process.env.VRP_M3_JOB)
+  const requested = process.env.VRP_M4_JOB ?? process.env.VRP_M3_JOB;
+  const campaign = requested
+    ? campaigns.find((c: any) => c.id === requested)
     : campaigns.find((c: any) => ["completed", "cancelled"].includes(c.status));
   expect(
     campaign,
@@ -27,6 +28,7 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
         ).json(),
       ),
   );
+  const learned = campaign.request.manifest.main_cases === 288;
   let pair: any[] = [];
   for (const a of results)
     for (const b of results)
@@ -35,7 +37,7 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
         a.scenario_available &&
         b.scenario_available &&
         a.case.method === "ordered" &&
-        b.case.method === "shuffled" &&
+        b.case.method === (learned ? "learned" : "shuffled") &&
         a.case.budget_s === 15 &&
         a.case.time_weight === 1 &&
         a.quality?.feasible_within_budget &&
@@ -49,6 +51,11 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
         pair = [a, b];
   expect(pair.length).toBe(2);
   const [a, b] = pair;
+  if (learned) {
+    expect(b.checkpoint_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(b.learned.device).toBe("cpu");
+    expect(b.training.training_duration_s).toBeGreaterThan(0);
+  }
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("https://tiles.openfreemap.org/**", (route) =>
@@ -60,7 +67,8 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
     .getByLabel("Campagna", { exact: true })
     .selectOption(campaign.id);
   await expect(section.getByRole("status")).toContainText(
-    `${cases.filter((c: any) => c.available).length}`,
+    `${cases.filter((c: any) => c.available).length}/${cases.length} casi salvati`,
+    { timeout: 60000 },
   );
   await section
     .getByLabel("Istanza", { exact: true })
@@ -71,6 +79,14 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
   await section
     .getByLabel("Metodo", { exact: true })
     .selectOption(a.case.method);
+  if (learned) {
+    await section.getByLabel("Metodo", { exact: true }).selectOption("learned");
+    await expect(section.locator("tbody tr").first()).toContainText("cpu");
+    await expect(section.locator("tbody tr").first()).toContainText("training");
+    await section
+      .getByLabel("Metodo", { exact: true })
+      .selectOption(a.case.method);
+  }
   const rows = section.locator("tbody tr");
   expect(await rows.count()).toBeGreaterThan(0);
   for (const row of await rows.all())
@@ -147,8 +163,20 @@ test("saved real-road comparison filters, curves, fronts and synchronized maps r
     `/api/v1/experiments/${campaign.id}/export/json`,
   );
   expect(download.ok()).toBe(true);
-  expect((await download.json()).manifest_hash).toBe(
-    campaign.request.manifest.manifest_hash,
-  );
+  const report = await download.json();
+  if (learned) {
+    expect(report.schema_version).toBe(2);
+    expect(report.campaign_complete).toBe(true);
+    expect(report.training_cost.training_and_preflight_s).toBeGreaterThan(
+      report.training_cost.model_training_s,
+    );
+    await expect(
+      section.getByText(
+        `costo condiviso totale: ${report.training_cost.training_and_preflight_s.toFixed(3)} s.`,
+        { exact: false },
+      ),
+    ).toBeVisible();
+  }
+  expect(report.manifest_hash).toBe(campaign.request.manifest.manifest_hash);
   expect(errors).toEqual([]);
 });

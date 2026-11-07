@@ -2,7 +2,8 @@
 
 Status: steps 1–3 (M1) and steps 4–6 (M2) are implemented. The user authorized
 M2 with Bologna/Modena, local OSRM, editable demo appointments and an online
-basemap. Step 7 is implemented under the confirmed M3 pilot scope; steps 8–9 remain planned and are not authorized by M3. See [M3 operations](m3-comparisons.md) for actual verification and limitations.
+basemap. Step 7 is implemented under the confirmed M3 pilot scope; step 8 is separately authorized by the M4 plan and implemented with the complete held-out campaign and
+acceptance checks verified; step 9 LAN deployment remains planned. See [M3 operations](m3-comparisons.md) for actual verification and limitations.
 
 ## Starting point and decisions
 
@@ -10,7 +11,7 @@ The local environment inspected on 2026-11-07 exposes Python 3.12.3, Node.js 24.
 
 Use the provisional semantics in requirements.md explicitly: collection-only, one depot, homogeneous vans, inclusive service-start windows and duration measured through depot return. Keep capacities, package properties and fuel coefficients configurable. No real fleet calibration is implied.
 
-M2 uses Bologna and Modena, configurable demo depots, 5 km service areas and local OSRM over a frozen Geofabrik Nord-Est snapshot. Choose a project license before publication. Ai360 inspection and deployment remain deferred.
+M2 uses Bologna and Modena, configurable demo depots, 5 km service areas and local OSRM over a frozen Geofabrik Nord-Est snapshot. Choose a project license before publication. Ai360 batch compatibility was inspected for M4; LAN deployment remains deferred.
 
 ## 1. Establish the executable foundation (M1)
 
@@ -82,7 +83,7 @@ Deliverable: the main computer controls and replays a persistent Ai360 worker ru
 
 ## Execution discipline
 
-Implement one slice at a time. M1 and M2 are implemented; M3 follows the confirmed two-instance classical pilot; learned search and remote deployment remain separate future work. At each boundary,
+Implement one slice at a time. M1 and M2 are implemented; M3 follows the confirmed two-instance classical pilot; learned search follows the separately confirmed M4 scope; LAN deployment remains future work. At each boundary,
 record commands actually run, acceptance results and remaining limitations; update
 README.md and roadmap.md consistently. Keep downloads, runs, datasets and
 checkpoints out of Git. Do not add later-stage dependencies or fabricate

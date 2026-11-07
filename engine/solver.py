@@ -42,29 +42,9 @@ def proposal(s, routes):
 
 def neighbor_moves(routes):
     """Stable order: relocation, swap, then within-route reversal."""
-    for a, route in enumerate(routes):
-        for i in range(len(route)):
-            for b, dest in enumerate(routes):
-                for j in range(len(dest) + 1):
-                    if a == b and j in (i, i + 1):
-                        continue
-                    moved = copy.deepcopy(routes)
-                    stop = moved[a].pop(i)
-                    index = j - 1 if a == b and j > i else j
-                    moved[b].insert(index, stop)
-                    yield moved, 'relocate'
-    positions = [(a, i) for a, route in enumerate(routes) for i in range(len(route))]
-    for x, (a, i) in enumerate(positions):
-        for b, j in positions[x + 1:]:
-            moved = copy.deepcopy(routes)
-            moved[a][i], moved[b][j] = moved[b][j], moved[a][i]
-            yield moved, 'swap'
-    for a, route in enumerate(routes):
-        for i in range(len(route)):
-            for j in range(i + 2, len(route) + 1):
-                moved = copy.deepcopy(routes)
-                moved[a][i:j] = reversed(moved[a][i:j])
-                yield moved, 'reverse'
+    from .moves import enumerate_moves
+    for move in enumerate_moves(routes):
+        yield move.apply(routes), move.operator
 
 
 def neighbors(routes):
@@ -80,7 +60,7 @@ class StopSearch(Exception):
 
 def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
           clock=time.monotonic, startup_s=0.0, preparation_s=0.0,
-          observe=None, cancelled=None, selection_policy="ordered", candidate_observer=None):
+          observe=None, cancelled=None, selection_policy="ordered", candidate_observer=None, checkpoint=None):
     """Budget starts before scenario-specific validation/preparation.
 
     max_evaluations allows deterministic comparisons when wall time is ample.
@@ -100,8 +80,12 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
     runtime = runtime_info()
     rng = random.Random(seed)
     selection_rng = random.Random(seed)
-    if selection_policy not in ("ordered", "shuffled"):
+    if selection_policy not in ("ordered", "shuffled", "learned"):
         raise InputError("unsupported selection policy")
+    policy = None
+    if selection_policy == 'learned':
+        from .learning import Policy
+        policy = Policy.load(checkpoint)
     evaluations = 0
     best, best_score, first = None, math.inf, None
     search_started = clock()
@@ -185,6 +169,11 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
                 if selection_policy == "shuffled":
                     moves = list(moves)
                     selection_rng.shuffle(moves)
+                if policy is not None:
+                    from .moves import enumerate_moves
+                    descriptors = list(enumerate_moves(routes))
+                    descriptors = policy.order(s, routes, current_report, descriptors)
+                    moves = ((move.apply(routes), move.operator) for move in descriptors)
                 for candidate, move_type in moves:
                     report = evaluate(candidate)
                     if report['feasible']:
@@ -222,5 +211,7 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
         result['timing']['recording_s'] = recording_s
     from .contracts_v2 import run_schema
     check(result, run_schema(result))
+    if policy is not None:
+        result['learned'] = dict(checkpoint_hash=policy.model['model_hash'], device='cpu', inference='numpy-fp32', inference_s=policy.inference_s)
     result['timing']['solve_s'] = clock() - started
     return result

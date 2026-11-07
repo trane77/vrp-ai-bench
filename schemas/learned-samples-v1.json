@@ -1,0 +1,445 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "learned_samples"
+      ]
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split": {
+      "enum": [
+        "training",
+        "validation"
+      ]
+    },
+    "scenario_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "method": {
+      "enum": [
+        "ordered",
+        "shuffled"
+      ]
+    },
+    "time_weight": {
+      "enum": [
+        0,
+        0.5,
+        1
+      ]
+    },
+    "seed": {
+      "const": 10
+    },
+    "feature_schema": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 30,
+          "maxItems": 30
+        },
+        "normalization": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "version",
+        "names",
+        "normalization"
+      ],
+      "additionalProperties": false
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "solution": {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "const": 1,
+                "type": "integer"
+              },
+              "scenario_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "routes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "vehicle_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stop_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "vehicle_id",
+                    "stop_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "schema_version",
+              "scenario_id",
+              "routes"
+            ],
+            "additionalProperties": false
+          },
+          "validation": {
+            "type": "object",
+            "properties": {
+              "feasible": {
+                "type": "boolean"
+              },
+              "violations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "metrics": {
+                "type": "object",
+                "properties": {
+                  "fleet_elapsed_s": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "completion_s": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "travel_s": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "waiting_s": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "service_s": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "distance_m": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "estimated_fuel_l": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "used_vans": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "available_vans": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "fleet_elapsed_s",
+                  "completion_s",
+                  "travel_s",
+                  "waiting_s",
+                  "service_s",
+                  "distance_m",
+                  "estimated_fuel_l",
+                  "used_vans",
+                  "available_vans"
+                ],
+                "additionalProperties": false
+              },
+              "vehicles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "vehicle_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "stop_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "return_s": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "visits": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "stop_id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "arrival_s": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "service_start_s": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "departure_s": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "load_kg": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "load_m3": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "stop_id",
+                          "arrival_s",
+                          "service_start_s",
+                          "departure_s",
+                          "load_kg",
+                          "load_m3"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "target": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "travel_s": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "distance_m": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "load_kg": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "load_m3": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "estimated_fuel_l": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "source",
+                          "target",
+                          "travel_s",
+                          "distance_m",
+                          "load_kg",
+                          "load_m3",
+                          "estimated_fuel_l"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "metrics": {
+                      "type": "object",
+                      "properties": {
+                        "fleet_elapsed_s": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "completion_s": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "travel_s": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "waiting_s": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "service_s": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "distance_m": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "estimated_fuel_l": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "used_vans": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "available_vans": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "fleet_elapsed_s",
+                        "completion_s",
+                        "travel_s",
+                        "waiting_s",
+                        "service_s",
+                        "distance_m",
+                        "estimated_fuel_l",
+                        "used_vans",
+                        "available_vans"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "vehicle_id",
+                    "stop_ids",
+                    "return_s",
+                    "visits",
+                    "legs",
+                    "metrics"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "fuel_label": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "feasible",
+              "violations",
+              "metrics",
+              "vehicles",
+              "fuel_label"
+            ],
+            "additionalProperties": false
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 30,
+                  "maxItems": 30
+                },
+                "improvement": {
+                  "type": "boolean"
+                },
+                "gain": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "index",
+                "features",
+                "improvement",
+                "gain"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "solution",
+          "validation",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 3
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "failed"
+      ]
+    },
+    "samples_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "scenario_id",
+    "split",
+    "scenario_hash",
+    "method",
+    "time_weight",
+    "seed",
+    "feature_schema",
+    "groups",
+    "status",
+    "samples_hash",
+    "duration_s"
+  ],
+  "additionalProperties": true
+}

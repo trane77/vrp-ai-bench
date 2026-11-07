@@ -92,6 +92,9 @@ def validate_road_scenario(data):
 
 
 def run_schema(data):
+    if data.get('schema_version') == 4:
+        from .contracts_v4 import RUN_V4
+        return RUN_V4
     if data.get('schema_version') == 3:
         from .contracts_v3 import RUN_V3
         return RUN_V3

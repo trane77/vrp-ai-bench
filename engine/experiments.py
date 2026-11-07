@@ -27,8 +27,10 @@ METHODS = ('ordered', 'shuffled', 'ortools')
 def provenance():
     def git(*args):
         return subprocess.check_output(['git', *args], text=True).strip()
-    return dict(runtime=runtime_info(), git_revision=git('rev-parse', 'HEAD'),
-                git_dirty=git('status', '--porcelain'),
+    portable = load_json('source-provenance.json') if Path('source-provenance.json').exists() else None
+    return dict(runtime=runtime_info(), container_image=os.environ.get('VRP_CONTAINER_IMAGE'),
+                git_revision=portable['git_revision'] if portable else git('rev-parse', 'HEAD'),
+                git_dirty=portable['git_dirty'] if portable else git('status', '--porcelain'),
                 lock_hashes={str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in
                              map(Path, ['requirements.lock', 'requirements-experiment.lock', 'client/package-lock.json']) if p.exists()},
                 packages={d.metadata['Name']: d.version for d in importlib.metadata.distributions()},
@@ -74,6 +76,9 @@ def freeze(scenarios):
 
 
 def validate_manifest(manifest):
+    if manifest.get('schema_version') == 2:
+        from .learn_evaluate import validate_manifest_v2
+        return validate_manifest_v2(manifest)
     check(manifest, MANIFEST_V1)
     expected = manifest.get('manifest_hash')
     unsigned = {k:v for k,v in manifest.items() if k != 'manifest_hash'}
@@ -113,8 +118,8 @@ def hypervolume(items, reference, scales):
 
 def case_summary(result):
     """Compact derived view; the original independently validated run stays intact."""
-    value={k:result[k] for k in ('run_id','case','status','error','termination_reason','observations','quality','timing','objective') if k in result}
-    value.update(schema_version=1,kind='experiment_case_summary',scenario_available='scenario' in result)
+    value={k:result[k] for k in ('run_id','case','status','error','termination_reason','observations','quality','timing','objective','learned','checkpoint_hash','training','alternatives','scenario_ref') if k in result}
+    value.update(schema_version=1,kind='experiment_case_summary',scenario_available='scenario' in result or 'scenario_ref' in result)
     return value
 
 
@@ -160,7 +165,10 @@ def execute_case(root, manifest, case, cancel):
                     stream.write(json.dumps(event, allow_nan=False)+'\n'); stream.flush(); os.fsync(stream.fileno())
             observer_s += time.monotonic()-before
         result = run_solver(SolverRequest(s, case['method'], case['budget_s'], case['seed'], observe,
-                                          cancelled, candidate, time.monotonic()-started))
+                                          cancelled, candidate, time.monotonic()-started,
+                                          str(directory.parent.parent/'checkpoint.json') if case['method']=='learned' else None))
+        if case['method']=='learned' and result['learned']['checkpoint_hash']!=manifest['checkpoint_hash']:
+            raise InputError('runtime checkpoint hash mismatch')
         solve_s = time.monotonic()-started
         result.update(schema_version=3, kind='experiment_run', case=case, original_scenario_hash=original_hash,
                       scenario_hash=scenario_hash(s), scenario=s, objective=s['objective'],
@@ -176,12 +184,19 @@ def execute_case(root, manifest, case, cancel):
         # Quality accounting stays available in controls without event persistence.
         result['quality'] = summarize_case(s, case, observations, instance['reference'])
         result['status'] = 'cancelled' if cancelled() else 'completed'
+        if manifest['schema_version'] == 2:
+            result.update(schema_version=4, scenario_ref=f"scenarios/{case['instance']}.json",
+                          checkpoint_hash=manifest['checkpoint_hash'] if case['method']=='learned' else None,
+                          training=manifest['training'])
+            result.pop('scenario', None)
+            result.pop('reference', None)
     except Exception as exc:
-        result = dict(schema_version=3, kind='experiment_run', case=case, status='failed',
+        result = dict(schema_version=4 if manifest['schema_version']==2 else 3, kind='experiment_run', case=case, status='failed',
                       termination_reason='adapter_error', error=f'{type(exc).__name__}: {exc}',
                       observations=observations if case['recording'] else [], alternatives=alternatives)
     result['run_id'] = directory.parent.parent.name+'/'+case['id']
-    check(result, RUN_V3)
+    from .contracts_v4 import RUN_V4
+    check(result, RUN_V4 if result['schema_version']==4 else RUN_V3)
     before = time.monotonic()
     write_json_atomic(directory/'result.json', result)
     write_json_atomic(directory/'summary.json', case_summary(result))
@@ -202,25 +217,35 @@ def campaign(jobs, id, manifest):
     validate_manifest(manifest)
     directory = jobs.root/id; directory.mkdir(exist_ok=True)
     write_json_atomic(directory/'manifest.json', manifest)
-    for instance in manifest['instances']:
-        write_json_atomic(directory/'scenarios'/f"{instance['id']}.json", instance['scenario'])
+    if manifest['schema_version'] == 2:
+        from .learn_evaluate import archive_inputs
+        archive_inputs(directory,manifest)
+    else:
+        for instance in manifest['instances']:
+            write_json_atomic(directory/'scenarios'/f"{instance['id']}.json", instance['scenario'])
     for source in Path('engine').glob('*.py'):
         destination=directory/'sources'/source
         destination.parent.mkdir(parents=True,exist_ok=True)
         destination.write_bytes(source.read_bytes())
+    for source in [*Path('.').glob('requirements*.lock'), Path('client/package-lock.json'), Path('source-provenance.json')]:
+        if source.exists():
+            destination=directory/'sources'/source
+            destination.parent.mkdir(parents=True,exist_ok=True); destination.write_bytes(source.read_bytes())
     context = multiprocessing.get_context('spawn')
     campaign_started = time.monotonic()
     for case in manifest['cases']:
-        if jobs.get(id)['cancel_requested']: break
+        if jobs.get(id)['cancel_requested'] or (manifest.get('deadline_monotonic_s') is not None and time.monotonic() >= manifest['deadline_monotonic_s']): break
         cancel = context.Event()
         process = context.Process(target=execute_case, args=(str(directory/'cases'/case['id']), manifest, case, cancel), daemon=True)
         before = time.monotonic(); process.start()
         while process.is_alive():
-            if jobs.get(id)['cancel_requested']: cancel.set()
+            if jobs.get(id)['cancel_requested'] or (manifest.get('deadline_monotonic_s') is not None and time.monotonic() >= manifest['deadline_monotonic_s']): cancel.set()
             process.join(.1)
         path = directory/'cases'/case['id']
         if not (path/'result.json').exists():
-            write_json_atomic(path/'result.json', dict(schema_version=3,kind='experiment_run',case=case,status='failed', termination_reason='process_error', exitcode=process.exitcode))
+            failed=dict(schema_version=4 if manifest['schema_version']==2 else 3,kind='experiment_run',case=case,status='failed', termination_reason='process_error', exitcode=process.exitcode)
+            write_json_atomic(path/'result.json',failed)
+            write_json_atomic(path/'summary.json',case_summary(failed))
         wall = time.monotonic()-before
         publication = load_json(path/'publication.json') if (path/'publication.json').exists() else {}
         write_json_atomic(path/'process.json', dict(process_wall_s=wall, started_monotonic_s=before, finished_monotonic_s=before+wall,
@@ -233,7 +258,10 @@ def campaign(jobs, id, manifest):
 def report(directory):
     directory = Path(directory)
     manifest = validate_manifest(load_json(directory/'manifest.json'))
-    results = [load_json(p) for p in sorted((directory/'cases').glob('*/result.json'))]
+    compact = manifest['schema_version'] == 2
+    results = [load_json(p) for p in sorted((directory/'cases').glob('*/summary.json' if compact else '*/result.json'))]
+    methods = ('ordered','shuffled','learned') if compact else METHODS
+    repetitions = range(2) if compact else range(3)
     rows, fronts = [], []
     for result in results:
         case = result['case']
@@ -242,10 +270,16 @@ def report(directory):
                          observer_s=result.get('timing',{}).get('observer_s'),
                          fleet_minutes=(result.get('quality',{}).get('best_metrics') or {}).get('fleet_elapsed_s',0)/60 if result.get('quality',{}).get('best_metrics') else None,
                          estimated_fuel_l=(result.get('quality',{}).get('best_metrics') or {}).get('estimated_fuel_l')))
+    if compact:
+        for row,result in zip(rows,results):
+            row.update(checkpoint_hash=result.get('checkpoint_hash'),inference_device=result.get('learned',{}).get('device','cpu'),
+                       inference_s=result.get('learned',{}).get('inference_s',0),
+                       training_device=manifest['training'].get('training_device'),
+                       shared_training_s=manifest['training'].get('training_duration_s'))
     for instance in manifest['instances']:
-        for method in ('ordered', 'shuffled'):
+        for method in (methods if compact else ('ordered', 'shuffled')):
             for budget in (5, 15):
-                for repetition in range(3):
+                for repetition in repetitions:
                     selected = [r for r in results if r['case']['instance']==instance['id'] and r['case']['method']==method and r['case']['budget_s']==budget and r['case']['repetition']==repetition and not r['case']['control']]
                     alternatives = nondominated([a for r in selected for a in r.get('alternatives',[]) if a['elapsed_s'] <= budget])
                     fronts.append(dict(instance=instance['id'],method=method,budget_s=budget,repetition=repetition,
@@ -254,7 +288,7 @@ def report(directory):
     pairs = []
     for a in rows:
         for b in rows:
-            if METHODS.index(a['method']) < METHODS.index(b['method']) and a['repetition']==b['repetition'] and compatible(a,b):
+            if methods.index(a['method']) < methods.index(b['method']) and a['repetition']==b['repetition'] and compatible(a,b):
                 x, y = a.get('best_score'), b.get('best_score')
                 pairs.append(dict(a=a['id'], b=b['id'], method_a=a['method'], method_b=b['method'],
                                   pairing='temporal_repetition' if 'ortools' in (a['method'],b['method']) else 'custom_seed',
@@ -283,17 +317,32 @@ def report(directory):
                                 conditional_score_min=min(scores) if scores else None,
                                 conditional_score_max=max(scores) if scores else None))
     curves = [dict(case_id=r['case']['id'],points=[dict(elapsed_s=o['elapsed_s'],
-                   score=objective_score(r['scenario'],o['validation']), metrics=o['validation']['metrics'],
-                   within_budget=o['elapsed_s']<=r['case']['budget_s']) for o in r.get('observations',[])]) for r in results if r.get('scenario')]
-    value = dict(schema_version=1,kind='experiment_report',manifest_hash=manifest['manifest_hash'],
+                   score=objective_score(dict(objective=r['objective']),o['validation']), metrics=o['validation']['metrics'],
+                   within_budget=o['elapsed_s']<=r['case']['budget_s']) for o in r.get('observations',[])]) for r in results if r.get('objective')]
+    value = dict(schema_version=2 if compact else 1,kind='experiment_report',manifest_hash=manifest['manifest_hash'],
                  completed=len(results),total=len(manifest['cases']),rows=rows,fronts=fronts,paired_differences=pairs,
                  recording_controls=controls,variability=variability,anytime_curves=curves,scope=manifest['scope'],reference_status='feasible_not_certified')
-    check(value, REPORT_V1)
+    if compact:
+        if (directory/'training-cost.json').exists():
+            costs=load_json(directory/'training-cost.json')
+            if costs['checkpoint_hash']!=manifest['checkpoint_hash']: raise InputError('training cost ledger checkpoint mismatch')
+            value['training_cost']=costs
+            for row in rows:
+                row.update(shared_preflight_s=costs['preflight_s'],shared_training_and_preflight_s=costs['training_and_preflight_s'])
+        value.update(checkpoint_hash=manifest['checkpoint_hash'],training=manifest['training'],
+                     unexecuted=[c['id'] for c in manifest['cases'] if c['id'] not in {r['case']['id'] for r in results}],
+                     campaign_complete=(load_json(directory/'audit.json').get('campaign_complete',False)
+                                        if (directory/'audit.json').exists() and len(results)==336 else False))
+    from .contracts_v4 import REPORT_V2
+    check(value, REPORT_V2 if compact else REPORT_V1)
     write_json_atomic(directory/'report.json',value,overwrite=True)
     fields = sorted({k for row in rows for k in row})
     output = io.StringIO(); writer=csv.DictWriter(output,fieldnames=fields); writer.writeheader(); writer.writerows(rows)
     (directory/'report.csv').write_text(output.getvalue())
-    text = '# M3 descriptive pilot\n\n'+manifest['scope']+'\n\nWitness references are feasible, not certified optima. Fuel values are uncalibrated model estimates in liters.\n\n'
+    text = ('# M4 held-out comparison\n\n' if compact else '# M3 descriptive pilot\n\n')+manifest['scope']+'\n\nWitness references are feasible, not certified optima. Fuel values are uncalibrated model estimates in liters.\n\n'
+    if value.get('training_cost'):
+        costs=value['training_cost']
+        text += f"Shared training: {costs.get('training_phase_s',costs['model_training_s']):.6f} s (measured training {costs['model_training_s']:.6f} s); preflight containers: {costs['preflight_s']:.6f} s; total: {costs['training_and_preflight_s']:.6f} s. The in-training GPU probe is already included.\n\n"
     text += f"Completed cases: {len(results)}/{len(manifest['cases'])}. Fronts cost three preference budgets. Late validations excluded from budget quality. Target failures are censored. No city-level confidence intervals.\n\n"
     text += '| Case | Instance | Method | Budget s | Status | Feasible in budget | Target censored | Score |\n|---|---|---|---:|---|---|---|---:|\n'
     for r in rows: text += f"| {r['id']} | {r['instance']} | {r['method']} | {r['budget_s']} | {r['status']} | {r.get('feasible_within_budget')} | {r.get('target_censored')} | {r.get('best_score')} |\n"

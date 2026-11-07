@@ -104,3 +104,14 @@ New experimental cases carry a qualified campaign/case `run_id`. Legacy v3
 external envelopes are also recognized by their explicit `kind`; the frozen pilot
 files retain their original metadata. Compact case views have a separate version-1
 `experiment_case_summary` envelope and never replace the full run artifact.
+
+M4 adds `learned-dataset-v1`, `learned-samples-v1`, `learned-policy-v1`,
+`experiment-manifest-v2`, `experiment-report-v2` and `run-v4`. Domain scenarios
+remain v2 and proposals/events remain v1. A v4 run uses a relative `scenario_ref`
+resolved within its campaign, a verified original/weighted scenario hash, and a
+checkpoint hash for learned cases. The case summary omits road geometry; HTTP and
+CLI readers hydrate the shared scenario only when needed. Manifest/report v2
+fix the eight-instance, 336-case design; older manifest/report v1 remains the
+102-case M3 pilot. Canonical content hashes exclude their own hash field.
+See [M4 operations](../docs/m4-learning.md) for feature order, units, split integrity,
+timing, selection and archive contracts.

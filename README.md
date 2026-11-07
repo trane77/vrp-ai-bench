@@ -2,7 +2,7 @@
 
 A reproducible urban fleet-routing research laboratory: determine whether learned search improves solution quality and computation time compared with classical methods, while making the search observable through live visualization and replay.
 
-Status: M1 baseline, M2 local city laboratory and M3 classical comparison tools implemented: road-backed scenarios, independent validation, durable jobs, an interactive client and recorded replay. No trained model, measured AI advantage or Ai360 deployment exists.
+Status: M1–M3 are implemented. M4 adds supervised move ordering, frozen train/validation/test data, portable CPU inference and detached Ai360 batch execution. Training and the full 336-case held-out Ai360 campaign passed independent audit, verified import and browser acceptance. No measured AI advantage or LAN service deployment is claimed.
 
 ## Scope
 
@@ -23,6 +23,7 @@ Status: M1 baseline, M2 local city laboratory and M3 classical comparison tools 
 - [Implementation plan](docs/implementation-plan.md)
 - [M2 local setup, contracts and verification](docs/m2-local.md)
 - [M3 frozen classical comparisons](docs/m3-comparisons.md)
+- [M4 supervised learning and Ai360 batch operations](docs/m4-learning.md)
 - [Project decisions](docs/decisions.md)
 - [Development instructions](AGENTS.md)
 
@@ -90,5 +91,5 @@ it remains `unknown`, not a proof. The standalone M1 CLI does not record replay 
 `engine/` contains contracts, accounting, solver, OSRM preparation/adapter, durable
 queue, worker and HTTP service. `client/` contains the local React application;
 `schemas/` defines scenario v1/v2, experimental run v3 and manifest/report formats; `tests/` and client tests cover domain,
-queue, service, replay and browser acceptance. M3 includes the ordered/shuffled custom policies and an optional OR-Tools time adapter. Learned
-policy and remote deployment remain unimplemented.
+queue, service, replay and browser acceptance. M3 includes the ordered/shuffled custom policies and an optional OR-Tools time adapter. M4 adds a learned move-ordering policy and SSH batch transport; authenticated LAN
+service deployment remains future work. See [M4 operations](docs/m4-learning.md).

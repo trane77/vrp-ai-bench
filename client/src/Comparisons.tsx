@@ -39,6 +39,9 @@ type Result = {
     best_score: number | null;
   };
   timing?: { solve_s: number; observer_s: number };
+  checkpoint_hash?: string | null;
+  learned?: { device: string; inference_s: number };
+  training?: { training_device: string; training_duration_s?: number };
 };
 type Front = {
   instance: string;
@@ -80,6 +83,12 @@ export default function Comparisons() {
     [cases, setCases] = useState<Case[]>([]),
     [results, setResults] = useState<Result[]>([]),
     [fronts, setFronts] = useState<Front[]>([]);
+  const [trainingCost, setTrainingCost] = useState<{
+    model_training_s: number;
+    training_phase_s?: number;
+    preflight_s: number;
+    training_and_preflight_s: number;
+  } | null>(null);
   const cache = useRef(new Map<string, Result>());
   const [error, setError] = useState(""),
     [city, setCity] = useState("bologna"),
@@ -136,6 +145,11 @@ export default function Comparisons() {
         const all = await get<Case[]>("/" + id + "/cases");
         if (!alive) return;
         setCases(all);
+        setCity((current) =>
+          all.some((c) => c.instance === current)
+            ? current
+            : (all[0]?.instance ?? ""),
+        );
         const loaded = await Promise.all(
           all
             .filter((c) => c.available)
@@ -154,13 +168,22 @@ export default function Comparisons() {
         setResults(loaded);
         if (
           jobs.find((j) => j.id === id)?.status &&
-          ["completed", "cancelled"].includes(
+          ["completed", "cancelled", "failed"].includes(
             jobs.find((j) => j.id === id)!.status,
           )
         ) {
-          const report = await get<{ fronts: Front[] }>("/" + id + "/report");
+          const report = await get<{
+            fronts: Front[];
+            training_cost?: {
+              model_training_s: number;
+              training_phase_s?: number;
+              preflight_s: number;
+              training_and_preflight_s: number;
+            };
+          }>("/" + id + "/report");
           if (alive) {
             setFronts(report.fronts);
+            setTrainingCost(report.training_cost ?? null);
             terminalLoaded = true;
           }
         }
@@ -225,10 +248,14 @@ export default function Comparisons() {
   }
   return (
     <section className="history-section comparison-section" id="comparisons">
-      <h2>Confronti classici</h2>
+      <h2>Confronti</h2>
       <p>
-        Due istanze costruite: nessuna generalizzazione alle città. Riferimento
+        Istanze costruite: nessuna generalizzazione alle città. Riferimento
         fattibile non certificato; carburante stimato e non calibrato.
+      </p>
+      <p>
+        Il costo di training è condiviso dai casi dello stesso checkpoint e non
+        va sommato per caso.
       </p>
       <label>
         Carica manifest congelato{" "}
@@ -251,6 +278,7 @@ export default function Comparisons() {
             localStorage.setItem("m3-campaign", e.target.value);
             setResults([]);
             setFronts([]);
+            setTrainingCost(null);
             setLeft("");
             setRight("");
           }}
@@ -279,12 +307,33 @@ export default function Comparisons() {
           </button>
         </p>
       )}
+      {trainingCost && (
+        <p>
+          Fase training:{" "}
+          {(
+            trainingCost.training_phase_s ?? trainingCost.model_training_s
+          ).toFixed(3)}{" "}
+          s · preflight CPU/GPU: {trainingCost.preflight_s.toFixed(3)} s · costo
+          condiviso totale: {trainingCost.training_and_preflight_s.toFixed(3)}{" "}
+          s.
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
       <div className="comparison-filters">
         {(
           [
-            ["Istanza", city, setCity, ["bologna", "modena"]],
-            ["Metodo", method, setMethod, ["ordered", "shuffled", "ortools"]],
+            [
+              "Istanza",
+              city,
+              setCity,
+              [...new Set(cases.map((c) => c.instance))],
+            ],
+            [
+              "Metodo",
+              method,
+              setMethod,
+              ["ordered", "shuffled", "learned", "ortools"],
+            ],
             ["Budget", budget, setBudget, ["5", "15"]],
             ["Peso tempo", weight, setWeight, ["1", "0.5", "0"]],
             ["Registrazione", recording, setRecording, ["true", "false"]],
@@ -321,6 +370,8 @@ export default function Comparisons() {
                 "Soluzione entro budget",
                 "Target",
                 "Durata s",
+                "Checkpoint / dispositivo",
+                "Inferenza s / training condiviso s",
               ].map((h) => (
                 <th key={h}>{h}</th>
               ))}
@@ -345,11 +396,13 @@ export default function Comparisons() {
                     title={r?.error}
                   >
                     {r?.status ??
-                      (campaign?.status === "cancelled"
-                        ? "non eseguito · campagna cancellata"
-                        : campaign?.status === "failed"
-                          ? "non eseguito · interruzione"
-                          : "in attesa")}{" "}
+                      (c.available
+                        ? "caricamento"
+                        : campaign?.status === "cancelled"
+                          ? "non eseguito · campagna cancellata"
+                          : campaign?.status === "failed"
+                            ? "non eseguito · interruzione"
+                            : "in attesa")}{" "}
                     {r?.termination_reason}
                   </td>
                   <td>
@@ -367,25 +420,37 @@ export default function Comparisons() {
                       : "—"}
                   </td>
                   <td>{r?.timing?.solve_s.toFixed(3) ?? "—"}</td>
+                  <td title={r?.checkpoint_hash ?? undefined}>
+                    {r?.checkpoint_hash?.slice(0, 12) ?? "—"} ·{" "}
+                    {r?.learned?.device ?? "cpu"}
+                  </td>
+                  <td>
+                    {r?.learned?.inference_s.toFixed(4) ?? "—"} /{" "}
+                    {r?.training?.training_duration_s?.toFixed(2) ?? "—"}
+                    {r?.training
+                      ? ` · training ${r.training.training_device}`
+                      : ""}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      {campaign && ["completed", "cancelled"].includes(campaign.status) && (
-        <p>
-          {["json", "csv", "md"].map((format) => (
-            <a
-              key={format}
-              href={"/api/v1/experiments/" + id + "/export/" + format}
-              download
-            >
-              Scarica {format.toUpperCase()}{" "}
-            </a>
-          ))}
-        </p>
-      )}
+      {campaign &&
+        ["completed", "cancelled", "failed"].includes(campaign.status) && (
+          <p>
+            {["json", "csv", "md"].map((format) => (
+              <a
+                key={format}
+                href={"/api/v1/experiments/" + id + "/export/" + format}
+                download
+              >
+                Scarica {format.toUpperCase()}{" "}
+              </a>
+            ))}
+          </p>
+        )}
       <h3>Replay sul tempo di calcolo registrato</h3>
       <label>
         Sinistra{" "}
@@ -575,7 +640,13 @@ export default function Comparisons() {
             cx={40 + (p.x / maxX) * 530}
             cy={210 - (p.y / maxY) * 180}
             r="4"
-            fill={p.method === "ordered" ? "#3cdbb7" : "#719aff"}
+            fill={
+              p.method === "ordered"
+                ? "#3cdbb7"
+                : p.method === "learned"
+                  ? "#ffc46b"
+                  : "#719aff"
+            }
           >
             <title>
               {p.method} · rip. {p.rep} · {p.x.toFixed(2)} min ·{" "}

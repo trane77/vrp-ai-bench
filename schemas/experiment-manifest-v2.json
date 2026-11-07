@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "kind": {
+      "enum": [
+        "experiment_manifest"
+      ]
+    },
+    "manifest_hash": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "instance": {
+            "type": "string",
+            "minLength": 1
+          },
+          "method": {
+            "enum": [
+              "ordered",
+              "shuffled",
+              "learned"
+            ]
+          },
+          "budget_s": {
+            "enum": [
+              5,
+              15
+            ]
+          },
+          "repetition": {
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_weight": {
+            "enum": [
+              0,
+              0.5,
+              1
+            ]
+          },
+          "recording": {
+            "type": "boolean"
+          },
+          "control": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "instance",
+          "method",
+          "budget_s",
+          "repetition",
+          "seed",
+          "time_weight",
+          "recording",
+          "control"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 336,
+      "maxItems": 336
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "minItems": 8,
+      "maxItems": 8
+    },
+    "main_cases": {
+      "const": 288
+    },
+    "control_cases": {
+      "const": 48
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "manifest_hash",
+    "cases",
+    "instances",
+    "main_cases",
+    "control_cases"
+  ],
+  "additionalProperties": true
+}
