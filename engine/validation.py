@@ -206,8 +206,9 @@ def _account(s, proposal, require_all):
             finite = False
         if not finite:
             raise InputError('accounting overflow: reduce input magnitudes')
+    cal_status = s['fuel_model'].get('calibration', 'uncalibrated')
     return dict(feasible=not errors, violations=errors, metrics=totals,
-                vehicles=vehicles, fuel_label=f"{s['fuel_model']['label']} (uncalibrated)")
+                vehicles=vehicles, fuel_label=f"{s['fuel_model']['label']} ({cal_status})")
 
 
 def objective_score(scenario, report):

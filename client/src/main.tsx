@@ -662,7 +662,7 @@ function App() {
             VRP<span>AI</span>
             <span className="brand-divider" />
             <small>{it.app}</small>
-            <span className="version">M7 / CPU+M4+R&amp;D</span>
+            <span className="version">M8 / CPU+M4+R&amp;D</span>
           </div>
           <div className="header-status">
             <span className="local-pill">
@@ -897,6 +897,23 @@ function App() {
                   </div>
                   <details>
                     <summary>{it.advanced}</summary>
+                    <div
+                      className="helper"
+                      style={{
+                        marginBottom: 8,
+                        color:
+                          f.fuel_model.calibration === "microsim_calibrated"
+                            ? "#49b796"
+                            : "#a08049",
+                      }}
+                    >
+                      Stato modello carburante:{" "}
+                      <strong>
+                        {f.fuel_model.calibration === "microsim_calibrated"
+                          ? "Calibrato da microsimulazione (M8)"
+                          : "Parametrico non calibrato"}
+                      </strong>
+                    </div>
                     <Field
                       label={it.constantSeconds}
                       value={f.service.constant_s}
@@ -1225,7 +1242,11 @@ function App() {
                   icon: <Activity size={16} />,
                   label: it.fuel,
                   value: metrics ? number(metrics.estimated_fuel_l, 3) : "—",
-                  unit: "L stimati",
+                  unit:
+                    validation?.fuel_label.includes("microsim_calibrated") ||
+                    f?.fuel_model.calibration === "microsim_calibrated"
+                      ? "L calibrati (M8)"
+                      : "L stimati (non cal.)",
                 },
               ].map((m) => (
                 <div className="metric" key={m.label}>
@@ -1634,7 +1655,12 @@ function App() {
                   />
                 )}
               </svg>
-              <small>{it.estimate}</small>
+              <small>
+                {validation?.fuel_label.includes("microsim_calibrated") ||
+                f?.fuel_model.calibration === "microsim_calibrated"
+                  ? "Carburante calibrato da microsimulazione (M8)"
+                  : it.estimate}
+              </small>
             </section>
           </aside>
         </main>
@@ -1698,6 +1724,9 @@ function App() {
           stopCount={draft?.stops.length ?? count}
           defaultVehicles={f?.vehicle_ids.length ?? 2}
           defaultServiceMode={f?.service.mode ?? "constant"}
+          onApplyCalibratedFuel={(calibratedFuel) =>
+            params("fuel_model", calibratedFuel)
+          }
         />
         <Comparisons />
         <footer>

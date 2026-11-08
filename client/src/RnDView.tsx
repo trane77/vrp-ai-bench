@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { FlaskConical, ShieldAlert, Cpu, Play, CheckCircle2, AlertTriangle, GitBranch } from "lucide-react";
+import { FlaskConical, ShieldAlert, Cpu, Play, CheckCircle2, AlertTriangle, GitBranch, Gauge } from "lucide-react";
 import { request } from "./connection";
+import type { Parameters } from "./types";
 
 type SummaryStats = {
   mean: number;
@@ -110,6 +111,88 @@ type PathComparisonReport = {
   }[];
 };
 
+type MicrosimReport = {
+  schema_version: number;
+  scenario_id: string;
+  simulator: {
+    name: string;
+    seed: number;
+    congestion_factor: number;
+    signal_delay_scale: number;
+    curb_mass_kg: number;
+    telemetry_disclaimer: string;
+  };
+  timing_drift: {
+    nominal_travel_s: number;
+    microsim_travel_s: number;
+    signal_delay_s: number;
+    travel_drift_s: number;
+    travel_drift_pct: number;
+    window_compliance_rate: number;
+    duration_cap_ok: boolean;
+  };
+  fuel_comparison: {
+    uncalibrated_parametric: {
+      fuel_l: number;
+      label: string;
+      signed_error_l: number;
+      abs_error_pct: number;
+    };
+    microsim_reference: {
+      fuel_l: number;
+      co2_kg: number;
+      label: string;
+    };
+    calibrated_parametric: {
+      fuel_l: number;
+      label: string;
+      signed_error_l: number;
+      abs_error_pct: number;
+    };
+  };
+  calibration: {
+    calibrated_fuel_model: Parameters["fuel_model"];
+    category_diagnostics: Record<
+      string,
+      {
+        uncalibrated_base_l_per_km: number;
+        uncalibrated_load_l_per_km_kg: number;
+        calibrated_base_l_per_km: number;
+        calibrated_load_l_per_km_kg: number;
+        sample_count: number;
+        rmse_l_per_km: number;
+        mae_l_per_km: number;
+        r2: number;
+      }
+    >;
+    residuals: {
+      rmse_l: number;
+      mae_l: number;
+      relative_bias_pct: number;
+      mean_sample_fuel_l: number;
+    };
+    validity_bounds: {
+      mass_kg_min: number;
+      mass_kg_max: number;
+      speed_kmh_min: number;
+      speed_kmh_max: number;
+    };
+  };
+  vehicle_reports: {
+    vehicle_id: string;
+    stops_count: number;
+    nominal_travel_s: number;
+    microsim_travel_s: number;
+    signal_delay_s: number;
+    microsim_duration_s: number;
+    duration_cap_ok: boolean;
+    uncalibrated_fuel_l: number;
+    microsim_fuel_l: number;
+    calibrated_fuel_l: number;
+    co2_kg: number;
+  }[];
+};
+
 const fmtNum = (n: number, digits = 1) =>
   n.toLocaleString("it-IT", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 
@@ -123,6 +206,7 @@ export default function RnDView({
   stopCount,
   defaultVehicles,
   defaultServiceMode,
+  onApplyCalibratedFuel,
 }: {
   solveJobId: string | null;
   preparedJobId: string | null;
@@ -130,10 +214,16 @@ export default function RnDView({
   stopCount: number;
   defaultVehicles: number;
   defaultServiceMode: "constant" | "packages";
+  onApplyCalibratedFuel?: (fuelModel: Parameters["fuel_model"]) => void;
 }) {
-  const [tab, setTab] = useState<"stochastic" | "campaigns" | "models" | "paths">("stochastic");
+  const [tab, setTab] = useState<"stochastic" | "campaigns" | "models" | "paths" | "microsim">("stochastic");
   const [pathReport, setPathReport] = useState<PathComparisonReport | null>(null);
   const [pathBusy, setPathBusy] = useState(false);
+  const [microsimReport, setMicrosimReport] = useState<MicrosimReport | null>(null);
+  const [microsimBusy, setMicrosimBusy] = useState(false);
+  const [congestionText, setCongestionText] = useState("1,15");
+  const [signalScaleText, setSignalScaleText] = useState("1,0");
+  const [appliedCalibrated, setAppliedCalibrated] = useState(false);
   const [samples, setSamples] = useState(100);
   const [travelCvText, setTravelCvText] = useState("0,15");
   const [serviceCvText, setServiceCvText] = useState("0,20");
@@ -267,19 +357,40 @@ export default function RnDView({
     }
   }
 
+  async function runMicrosim() {
+    if (!solveJobId) return;
+    setMicrosimBusy(true);
+    setAppliedCalibrated(false);
+    setError("");
+    try {
+      const congestion_factor = Math.max(0.8, Math.min(2.5, Number(congestionText.replace(",", ".")) || 1.15));
+      const signal_delay_scale = Math.max(0.0, Math.min(3.0, Number(signalScaleText.replace(",", ".")) || 1.0));
+      const resp = await request(`/api/v1/jobs/${solveJobId}/microsim`, "POST", {
+        seed: stochSeed,
+        congestion_factor,
+        signal_delay_scale,
+      });
+      setMicrosimReport(await resp.json());
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setMicrosimBusy(false);
+    }
+  }
+
   return (
     <section className="rnd-section" id="rnd-lab" aria-label="Laboratorio R&D">
       <div className="rnd-header">
         <div>
           <div className="eyebrow">
-            RESEARCH &amp; DEVELOPMENT <span>/ M6–M7</span>
+            RESEARCH &amp; DEVELOPMENT <span>/ M6–M8</span>
           </div>
           <h2>
-            <FlaskConical size={20} /> Laboratorio R&amp;D: Robustezza, Scala 20–100, Percorsi Alternativi e Modelli
+            <FlaskConical size={20} /> Laboratorio R&amp;D: Robustezza, Percorsi Alternativi, Microsimulazione e Modelli
           </h2>
           <p>
-            Valutazione indipendente Monte Carlo, confronto multi-percorso OSRM (M7), ispezione dei modelli
-            appresi (v1/v2) e lancio di campagne multi-scala su Ai360.
+            Stress-test Monte Carlo (M6), confronto multi-percorso OSRM (M7), microsimulazione longitudinale e
+            calibrazione carburante (M8), ispezione modelli appresi e lancio campagne su Ai360.
           </p>
         </div>
         <div className="rnd-tabs" role="tablist">
@@ -298,6 +409,14 @@ export default function RnDView({
             onClick={() => setTab("paths")}
           >
             <GitBranch size={14} /> Percorsi &amp; Vincoli (M7)
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "microsim"}
+            className={tab === "microsim" ? "chosen" : ""}
+            onClick={() => setTab("microsim")}
+          >
+            <Gauge size={14} /> Microsimulazione &amp; Carburante (M8)
           </button>
           <button
             role="tab"
@@ -746,6 +865,171 @@ export default function RnDView({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "microsim" && (
+        <div className="rnd-card">
+          <div className="rnd-controls">
+            <label className="field">
+              Fattore congestione (0,8–2,5)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={congestionText}
+                onChange={(e) => setCongestionText(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              Scala code semaforiche (0,0–3,0)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={signalScaleText}
+                onChange={(e) => setSignalScaleText(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              Seed microsimulazione
+              <input
+                type="text"
+                inputMode="numeric"
+                value={stochSeed}
+                onChange={(e) => setStochSeed(Number(e.target.value.replace(/\D/g, "")) || 0)}
+              />
+            </label>
+            <button
+              className="primary"
+              disabled={!solveJobId || microsimBusy}
+              onClick={runMicrosim}
+            >
+              <Gauge size={14} />
+              {microsimBusy ? "Microsimulazione in corso…" : "Esegui Microsimulazione & Calibrazione (M8)"}
+            </button>
+          </div>
+          {!solveJobId && (
+            <p className="helper">
+              Completa prima una ricerca fattibile (Avvia ricerca) per eseguire la microsimulazione longitudinale e
+              calibrare il modello carburante (M8).
+            </p>
+          )}
+          {microsimReport && (
+            <div className="rnd-results">
+              <div className="rnd-kpis">
+                <div className="rnd-kpi">
+                  <span>Deriva Tempo Guida</span>
+                  <strong>
+                    {fmtTime(microsimReport.timing_drift.nominal_travel_s)} →{" "}
+                    {fmtTime(microsimReport.timing_drift.microsim_travel_s)}
+                  </strong>
+                  <small>
+                    {microsimReport.timing_drift.travel_drift_pct >= 0 ? "+" : ""}
+                    {fmtNum(microsimReport.timing_drift.travel_drift_pct, 1)}% (code semafori:{" "}
+                    {fmtNum(microsimReport.timing_drift.signal_delay_s, 0)}s)
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>Finestre in Microsim</span>
+                  <strong>{fmtNum(microsimReport.timing_drift.window_compliance_rate * 100, 1)}%</strong>
+                  <small>
+                    Cap durata: {microsimReport.timing_drift.duration_cap_ok ? "Rispettato" : "Superato"}
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>1. Parametrico Non Calibrato</span>
+                  <strong>{fmtNum(microsimReport.fuel_comparison.uncalibrated_parametric.fuel_l, 3)} L</strong>
+                  <small>
+                    Errore vs Microsim: {fmtNum(microsimReport.fuel_comparison.uncalibrated_parametric.abs_error_pct, 1)}%
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>2. Riferimento Microsimulato</span>
+                  <strong>{fmtNum(microsimReport.fuel_comparison.microsim_reference.fuel_l, 3)} L</strong>
+                  <small>
+                    Emissioni stimate: {fmtNum(microsimReport.fuel_comparison.microsim_reference.co2_kg, 2)} kg CO₂
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>3. Parametrico Calibrato (M8)</span>
+                  <strong>{fmtNum(microsimReport.fuel_comparison.calibrated_parametric.fuel_l, 3)} L</strong>
+                  <small>
+                    Errore residuo: {fmtNum(microsimReport.fuel_comparison.calibrated_parametric.abs_error_pct, 1)}% · RMSE{" "}
+                    {fmtNum(microsimReport.calibration.residuals.rmse_l, 4)} L
+                  </small>
+                </div>
+              </div>
+
+              <div className="comparison-table">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <h4>
+                    Calibrazione OLS `linear-load-v1` vs Riferimento Fisico (`{microsimReport.simulator.name}`, massa a
+                    vuoto {microsimReport.simulator.curb_mass_kg} kg)
+                  </h4>
+                  {onApplyCalibratedFuel && (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        onApplyCalibratedFuel(microsimReport.calibration.calibrated_fuel_model);
+                        setAppliedCalibrated(true);
+                      }}
+                    >
+                      <CheckCircle2 size={14} />
+                      {appliedCalibrated
+                        ? "Modello calibrato applicato allo Scenario"
+                        : "Applica modello calibrato allo Scenario"}
+                    </button>
+                  )}
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Categoria stradale</th>
+                      <th>Base non cal. (L/km)</th>
+                      <th>Base calibrata (L/km)</th>
+                      <th>Carico non cal. (L/km/kg)</th>
+                      <th>Carico calibrato (L/km/kg)</th>
+                      <th>RMSE (L/km)</th>
+                      <th>MAE (L/km)</th>
+                      <th>R²</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(microsimReport.calibration.category_diagnostics).map(([cat, d]) => (
+                      <tr key={cat}>
+                        <td>
+                          <strong>{cat}</strong>
+                        </td>
+                        <td>{fmtNum(d.uncalibrated_base_l_per_km, 4)}</td>
+                        <td>
+                          <strong>{fmtNum(d.calibrated_base_l_per_km, 4)}</strong>
+                        </td>
+                        <td>{fmtNum(d.uncalibrated_load_l_per_km_kg, 6)}</td>
+                        <td>
+                          <strong>{fmtNum(d.calibrated_load_l_per_km_kg, 6)}</strong>
+                        </td>
+                        <td>{fmtNum(d.rmse_l_per_km, 5)}</td>
+                        <td>{fmtNum(d.mae_l_per_km, 5)}</td>
+                        <td>{fmtNum(d.r2, 3)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="helper" style={{ marginTop: 8 }}>
+                  Limiti di validità calibrazione: carico{" "}
+                  <strong>
+                    [{fmtNum(microsimReport.calibration.validity_bounds.mass_kg_min, 0)}–
+                    {fmtNum(microsimReport.calibration.validity_bounds.mass_kg_max, 0)} kg]
+                  </strong>
+                  , velocità media{" "}
+                  <strong>
+                    [{fmtNum(microsimReport.calibration.validity_bounds.speed_kmh_min, 1)}–
+                    {fmtNum(microsimReport.calibration.validity_bounds.speed_kmh_max, 1)} km/h]
+                  </strong>
+                  . {microsimReport.simulator.telemetry_disclaimer}
+                </p>
               </div>
             </div>
           )}

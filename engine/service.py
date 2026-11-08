@@ -70,6 +70,12 @@ class PathComparisonRequest(BaseModel):
     budget_s: float=Field(default=2.0,ge=0.2,le=30.0)
     max_evaluations: int=Field(default=400,ge=50,le=5000)
 
+class MicrosimRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    seed: int=42
+    congestion_factor: float=Field(default=1.15,ge=0.8,le=2.5)
+    signal_delay_scale: float=Field(default=1.0,ge=0.0,le=3.0)
+
 
 def same_origin(origin,host):
     try:
@@ -199,6 +205,21 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         from .stochastic import evaluate_stochastic
         return evaluate_stochastic(run['scenario'],run['solution'],seed=body.seed,samples=body.samples,
                                    travel_cv=body.travel_cv,service_cv=body.service_cv)
+
+    @app.post('/api/v1/jobs/{id}/microsim')
+    def job_microsim(id:str,body:MicrosimRequest):
+        job=jobs.get(id)
+        if job['kind']!='solve' or job['status']!='completed' or job['feasibility']!='feasible':
+            raise Conflict('microsimulation requires a completed feasible solve job')
+        run=jobs.result(id)
+        from .microsim import evaluate_microsim
+        return evaluate_microsim(
+            run['scenario'],
+            run['solution'],
+            seed=body.seed,
+            congestion_factor=body.congestion_factor,
+            signal_delay_scale=body.signal_delay_scale,
+        )
 
     def discover_checkpoints():
         import os
@@ -355,6 +376,7 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
                 multi_path=mp,
                 delta=dict(objective_score=delta_score,travel_s=delta_time_s,estimated_fuel_l=delta_fuel_l),
             ))
+        cal_status=base_scenario['fuel_model'].get('calibration','uncalibrated')
         return dict(
             schema_version=1,
             scenario_id=base_scenario['id'],
@@ -362,7 +384,7 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
             stop_count=len(base_scenario['stops']),
             total_legs=total_legs,
             legs_with_alternatives=legs_with_alts,
-            fuel_label=f"{base_scenario['fuel_model']['label']} (uncalibrated)",
+            fuel_label=f"{base_scenario['fuel_model']['label']} ({cal_status})",
             comparisons=rows,
         )
 

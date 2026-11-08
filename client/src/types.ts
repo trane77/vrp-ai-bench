@@ -46,6 +46,20 @@ export interface Parameters {
     >;
     idle_policy: string;
     idle_l_per_s: number;
+    calibration_metadata?: {
+      simulator: string;
+      seed: number;
+      curb_mass_kg: number;
+      rmse_l: number;
+      mae_l: number;
+      relative_bias_pct: number;
+      validity_bounds: {
+        mass_kg_min: number;
+        mass_kg_max: number;
+        speed_kmh_min: number;
+        speed_kmh_max: number;
+      };
+    };
   };
 }
 export interface Draft {

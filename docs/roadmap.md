@@ -91,9 +91,9 @@ Acceptance: the independent validator verifies path-selection and operational co
 
 ## M8 — Traffic microsimulation and calibrated fuel validation
 
-- [ ] Integrate an offline traffic microsimulation and emissions reference (e.g., Eclipse SUMO) over the frozen city road networks to replay planned schedules under signal timing and congestion dynamics.
-- [ ] Calibrate and benchmark the parametric load-dependent fuel model against microsimulated consumption curves, recording calibration parameters, residuals and validity bounds.
-- [ ] Separate uncalibrated parametric estimates from simulation-calibrated fuel metrics across run artifacts, exports and client views.
+- [x] Integrate an offline traffic microsimulation and emissions reference (e.g., Eclipse SUMO) over the frozen city road networks to replay planned schedules under signal timing and congestion dynamics.
+- [x] Calibrate and benchmark the parametric load-dependent fuel model against microsimulated consumption curves, recording calibration parameters, residuals and validity bounds.
+- [x] Separate uncalibrated parametric estimates from simulation-calibrated fuel metrics across run artifacts, exports and client views.
 
 Acceptance: a reproducible pipeline evaluates feasible VRP solutions in the traffic microsimulator and reports travel-time drift, window compliance and fuel-model calibration error without claiming real-fleet telemetry equivalence unless measured on physical vehicles.
 

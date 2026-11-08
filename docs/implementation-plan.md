@@ -127,7 +127,7 @@ Chromium checks passed, including the real-city acceptance flow. The software-We
 playback p95 was about 100 ms; the provisional 50 ms target remains unmet and is
 recorded as a prototype limitation, not hidden by the functional test result.
 
-### M3–M7 implementation notes
+### M3–M8 implementation notes
 
 - **M3**: Ordered/shuffled classical variants, optional OR-Tools elapsed-time adapter,
   frozen 102-case pilot (84 main + 18 recording controls), anytime curves, found
@@ -161,3 +161,11 @@ recorded as a prototype limitation, not hidden by the functional test result.
   waiting (`Attesa`), service (`Servizio`) and driver breaks (`Pausa`); and R&D
   single-path vs multi-path comparison endpoint (`POST /api/v1/rnd/path-comparison`)
   and UI controls.
+- **M8**: Longitudinal traffic and tractive-power emissions microsimulator
+  (`engine/microsim.py`, `longitudinal-tractive-v1`) with signalized intersection
+  queues, congestion modulation, and Eclipse SUMO `<emission-export>` XML parser
+  (`parse_sumo_emission_xml`); ordinary least-squares calibration of `linear-load-v1`
+  (`calibrate_fuel_model`) recording RMSE, MAE, $R^2$ and validity bounds in
+  `calibration_metadata`; strict separation of `"experimental estimate (uncalibrated)"`
+  from `"microsim-calibrated estimate (microsim_calibrated)"` across contracts,
+  validator, `POST /api/v1/jobs/{id}/microsim`, and the client R&D laboratory view.

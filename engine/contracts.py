@@ -52,6 +52,11 @@ STOP["properties"]["delivery_volume_m3"] = NUM
 DRIVER_BREAK = obj(enabled=BOOL, threshold_s=POS, duration_s=INT)
 VEHICLE_CAPACITIES = {"type": "object",
                       "additionalProperties": obj(mass_kg=POS, volume_m3=POS)}
+CALIBRATION_METADATA = obj(
+    simulator=TEXT, seed=INT, curb_mass_kg=POS,
+    rmse_l=NUM, mae_l=NUM, relative_bias_pct={"type": "number"},
+    validity_bounds=obj(mass_kg_min=NUM, mass_kg_max=POS,
+                        speed_kmh_min=NUM, speed_kmh_max=POS))
 SCENARIO = obj(
     schema_version=VERSION, id=TEXT,
     provenance=obj(kind=enum("synthetic"), description=TEXT,
@@ -66,8 +71,9 @@ SCENARIO = obj(
                 fixed_s=INT, per_package_s=INT),
     fuel_model=obj(version=enum("linear-load-v1"),
                    kind=enum("load_dependent", "distance_equivalent_control"),
-                   calibration=enum("uncalibrated"),
-                   label=enum("experimental estimate", "distance-equivalent control estimate"),
+                   calibration=enum("uncalibrated", "microsim_calibrated"),
+                   label=enum("experimental estimate", "distance-equivalent control estimate",
+                              "microsim-calibrated estimate"),
                    categories={"type": "object", "minProperties": 1,
                                "additionalProperties": obj(base_l_per_km=NUM,
                                                             load_l_per_km_kg=NUM)},
@@ -75,6 +81,7 @@ SCENARIO = obj(
                    idle_l_per_s=NUM),
     objective=obj(time_weight=NUM, fuel_weight=NUM,
                   time_scale_s=POS, fuel_scale_l=POS))
+SCENARIO["properties"]["fuel_model"]["properties"]["calibration_metadata"] = CALIBRATION_METADATA
 SCENARIO["properties"]["path_optimization"] = BOOL
 SCENARIO["properties"]["vehicle_capacities"] = VEHICLE_CAPACITIES
 SCENARIO["properties"]["driver_break"] = DRIVER_BREAK
@@ -227,13 +234,18 @@ def validate_scenario(data):
     coefficients = list(fuel["categories"].values())
     if fuel["kind"] == "distance_equivalent_control":
         if (fuel["label"] != "distance-equivalent control estimate"
+                or fuel["calibration"] != "uncalibrated"
                 or any(c["load_l_per_km_kg"] != 0 for c in coefficients)
                 or len({c["base_l_per_km"] for c in coefficients}) != 1
                 or fuel["idle_policy"] != "off"):
             raise InputError("distance-equivalent control requires its label, constant distance coefficient and no load/idle fuel")
-    elif (fuel["label"] != "experimental estimate"
-          or not any(c["load_l_per_km_kg"] > 0 for c in coefficients)):
-        raise InputError("load-dependent fuel requires a positive load coefficient; label constant liters/km as distance-equivalent control")
+    else:
+        expected_label = ("microsim-calibrated estimate"
+                          if fuel["calibration"] == "microsim_calibrated"
+                          else "experimental estimate")
+        if (fuel["label"] != expected_label
+                or not any(c["load_l_per_km_kg"] > 0 for c in coefficients)):
+            raise InputError("load-dependent fuel requires a positive load coefficient and matching calibration label")
     return copy.deepcopy(data)
 
 

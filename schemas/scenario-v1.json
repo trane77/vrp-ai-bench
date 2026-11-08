@@ -312,13 +312,15 @@
         },
         "calibration": {
           "enum": [
-            "uncalibrated"
+            "uncalibrated",
+            "microsim_calibrated"
           ]
         },
         "label": {
           "enum": [
             "experimental estimate",
-            "distance-equivalent control estimate"
+            "distance-equivalent control estimate",
+            "microsim-calibrated estimate"
           ]
         },
         "categories": {
@@ -352,6 +354,72 @@
         "idle_l_per_s": {
           "type": "number",
           "minimum": 0
+        },
+        "calibration_metadata": {
+          "type": "object",
+          "properties": {
+            "simulator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "curb_mass_kg": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "rmse_l": {
+              "type": "number",
+              "minimum": 0
+            },
+            "mae_l": {
+              "type": "number",
+              "minimum": 0
+            },
+            "relative_bias_pct": {
+              "type": "number"
+            },
+            "validity_bounds": {
+              "type": "object",
+              "properties": {
+                "mass_kg_min": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "mass_kg_max": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "speed_kmh_min": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "speed_kmh_max": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              },
+              "required": [
+                "mass_kg_min",
+                "mass_kg_max",
+                "speed_kmh_min",
+                "speed_kmh_max"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "simulator",
+            "seed",
+            "curb_mass_kg",
+            "rmse_l",
+            "mae_l",
+            "relative_bias_pct",
+            "validity_bounds"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
