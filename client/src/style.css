@@ -861,6 +861,10 @@ details[open] summary {
 .timeline-segment.service {
   background: #49b796;
 }
+.break-key,
+.timeline-segment.break {
+  background: #c86d8a;
+}
 .timeline-row {
   display: flex;
   align-items: center;

@@ -114,6 +114,67 @@ describe("recorded replay", () => {
     });
     expect(position(s, v, 40).phase).toBe("returned");
   });
+  it("distinguishes service and driver break phases and interpolates selected alternative geometry", () => {
+    const s = {
+      start_s: 0,
+      depot_id: "depot",
+      locations: [
+        { id: "depot", snapped: [0, 0] },
+        { id: "a", snapped: [2, 0] },
+      ],
+      legs: [
+        {
+          source: "depot",
+          target: "a",
+          geometry: [
+            [0, 0],
+            [2, 0],
+          ],
+          alternatives: [
+            {
+              id: "alt-1",
+              travel_s: 20,
+              distance_m: 1500,
+              geometry: [
+                [0, 0],
+                [0, 2],
+              ],
+            },
+          ],
+        },
+        {
+          source: "a",
+          target: "depot",
+          geometry: [
+            [2, 0],
+            [0, 0],
+          ],
+        },
+      ],
+    } as unknown as Scenario;
+    const v = {
+      legs: [
+        { source: "depot", target: "a", travel_s: 20, path_id: "alt-1" },
+        { source: "a", target: "depot", travel_s: 10 },
+      ],
+      visits: [
+        {
+          stop_id: "a",
+          arrival_s: 20,
+          service_start_s: 25,
+          departure_s: 55,
+          break_s: 20,
+        },
+      ],
+    } as Vehicle;
+    expect(position(s, v, 10)).toEqual({
+      coordinate: [0, 1],
+      phase: "travel",
+    });
+    expect(position(s, v, 22).phase).toBe("waiting");
+    expect(position(s, v, 30).phase).toBe("service");
+    expect(position(s, v, 45).phase).toBe("break");
+  });
 });
 
 it("displays local city time across DST without altering elapsed seconds", () => {

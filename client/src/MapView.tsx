@@ -135,9 +135,10 @@ export default function MapView(props: Props) {
         const leg = props.scenario?.legs.find(
           (l) => l.source === ids[i] && l.target === target,
         );
-        return leg?.reachable
-          ? [{ path: leg.geometry, color: colors[index % 5] }]
-          : [];
+        if (!leg?.reachable) return [];
+        const pid = route.path_ids?.[i];
+        const alt = pid ? leg.alternatives?.find((a) => a.id === pid) : undefined;
+        return [{ path: alt?.geometry ?? leg.geometry, color: colors[index % 5] }];
       });
     });
     return [

@@ -9,10 +9,11 @@ MapLibre renders the city; deck.gl renders route and event overlays. Prefer read
 ## Layout
 
 - Center: city, depot, stops, route geometry and selected vehicle.
-- Left: scenario, fleet, service mode, windows, duration cap and objective configuration.
-- Right: selected stop/vehicle details, packages, load, arrival/service/departure times, deadline slack and estimated fuel.
-- Bottom: vehicle timelines and replay controls.
+- Left: scenario, fleet, service mode, windows, duration cap, objective configuration and M7 operational constraints (alternative OSRM paths, mandatory driver break).
+- Right: selected stop/vehicle details, packages, pickup/delivery loads, arrival/service/break/departure times, deadline slack and estimated fuel.
+- Bottom: vehicle timelines (displaying driving, waiting, service and mandatory driver break segments per van) and replay controls.
 - Comparison view: synchronized maps, matching budget position and paired metrics.
+- R&D laboratory view: Monte Carlo stochastic robustness stress-testing, single-path vs multi-path OSRM trade-off table, multi-scale campaign launcher and learned model inspector.
 
 ## Two distinct observation modes
 

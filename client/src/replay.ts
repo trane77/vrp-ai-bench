@@ -65,9 +65,12 @@ export function position(
       const saved = s.legs.find(
         (l) => l.source === leg.source && l.target === leg.target,
       );
+      const alt = leg.path_id
+        ? saved?.alternatives?.find((a) => a.id === leg.path_id)
+        : undefined;
       return {
         coordinate: along(
-          saved?.geometry ?? [],
+          alt?.geometry ?? saved?.geometry ?? [],
           (now - departure) / Math.max(1, leg.travel_s),
         ),
         phase: "travel",
@@ -75,10 +78,13 @@ export function position(
     }
     const visit = v.visits[i];
     if (visit) {
+      const breakS = visit.break_s ?? 0;
       if (now < visit.service_start_s)
         return { coordinate: points.get(visit.stop_id)!, phase: "waiting" };
-      if (now < visit.departure_s)
+      if (now < visit.departure_s - breakS)
         return { coordinate: points.get(visit.stop_id)!, phase: "service" };
+      if (now < visit.departure_s)
+        return { coordinate: points.get(visit.stop_id)!, phase: "break" };
       departure = visit.departure_s;
     }
   }

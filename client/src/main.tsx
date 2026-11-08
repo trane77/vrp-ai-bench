@@ -1562,6 +1562,9 @@ function App() {
                     {[
                       [it.arrival, selectedVisit.arrival_s],
                       [it.start, selectedVisit.service_start_s],
+                      ...(selectedVisit.break_s
+                        ? [[it.driverBreak, selectedVisit.break_s]]
+                        : []),
                       [it.departure, selectedVisit.departure_s],
                       [
                         it.slack,
@@ -1720,6 +1723,12 @@ function Timelines({
   start: number;
 }) {
   const end = validation?.metrics.completion_s ?? 0;
+  const kindLabel: Record<string, string> = {
+    travel: it.travel,
+    wait: it.wait,
+    service: it.service,
+    break: it.driverBreak,
+  };
   return (
     <div className="timelines">
       <div className="timeline-title">
@@ -1731,6 +1740,8 @@ function Timelines({
           {it.wait}
           <i className="service-key" />
           {it.service}
+          <i className="break-key" />
+          {it.driverBreak}
         </div>
       </div>
       {validation?.vehicles.map((v, index) => {
@@ -1741,14 +1752,23 @@ function Timelines({
           segments.push({ from: departure, to: arrival, kind: "travel" });
           const visit = v.visits[i];
           if (visit) {
+            const breakS = visit.break_s ?? 0;
+            const serviceEnd = visit.departure_s - breakS;
             segments.push(
               { from: arrival, to: visit.service_start_s, kind: "wait" },
               {
                 from: visit.service_start_s,
-                to: visit.departure_s,
+                to: serviceEnd,
                 kind: "service",
               },
             );
+            if (breakS > 0) {
+              segments.push({
+                from: serviceEnd,
+                to: visit.departure_s,
+                kind: "break",
+              });
+            }
             departure = visit.departure_s;
           }
         });
@@ -1763,7 +1783,7 @@ function Timelines({
                 <span
                   key={i}
                   className={`timeline-segment ${s.kind}`}
-                  title={`${s.kind}: ${s.to - s.from} s`}
+                  title={`${kindLabel[s.kind] ?? s.kind}: ${s.to - s.from} s`}
                   style={{
                     left: `${((s.from - start) / Math.max(1, end)) * 100}%`,
                     width: `${((s.to - s.from) / Math.max(1, end)) * 100}%`,

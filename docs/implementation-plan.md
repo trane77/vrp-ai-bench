@@ -157,5 +157,7 @@ recorded as a prototype limitation, not hidden by the functional test result.
   objective-aware (`path_optimization=True`) leg path selection respecting
   destination time windows; backward-compatible operational constraints
   (`vehicle_capacities`, `driver_break`, and stop `delivery_mass_kg` /
-  `delivery_volume_m3`); and R&D single-path vs multi-path comparison endpoint
-  (`POST /api/v1/rnd/path-comparison`) and UI controls.
+  `delivery_volume_m3`); per-van graphical timeline segments for driving (`Guida`),
+  waiting (`Attesa`), service (`Servizio`) and driver breaks (`Pausa`); and R&D
+  single-path vs multi-path comparison endpoint (`POST /api/v1/rnd/path-comparison`)
+  and UI controls.
