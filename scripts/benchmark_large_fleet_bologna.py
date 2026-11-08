@@ -34,42 +34,45 @@ def run_benchmark():
     ckpt_path = "runs/m4-v4-gpu/checkpoint.json"
     print(f"\nUsing Policy v4 GPU checkpoint: {ckpt_path}")
     
-    # 1. Solve with Policy v4 and spatial pruning (budget: 10s)
-    print("\nRunning local search solver with Policy v4 and spatial neighborhood pruning (budget=10s)...")
+    # 1. Solve with Policy v4 and spatial pruning (budget: 30s)
+    print("\nRunning local search solver with Policy v4 and spatial neighborhood pruning (budget=30s, restarts=1)...")
     t0 = time.perf_counter()
-    result_v4 = solve(scenario, budget_s=10.0, seed=42, selection_policy="learned", checkpoint=ckpt_path)
+    result_v4 = solve(scenario, budget_s=30.0, seed=42, restarts=1, selection_policy="learned", checkpoint=ckpt_path)
     dur_v4 = time.perf_counter() - t0
     
     print(f"Policy v4 solve completed in {dur_v4:.2f}s:")
     print(f"  Feasible: {result_v4['feasibility']}")
     print(f"  Evaluations: {result_v4['evaluations']}")
     print(f"  Termination: {result_v4['termination_reason']}")
-    print(f"  Best distance: {result_v4['validation']['metrics']['distance_m']:.1f}m")
-    active_routes = sum(1 for r in result_v4['solution']['routes'] if r['stop_ids'])
+    if result_v4['validation']:
+        print(f"  Best distance: {result_v4['validation']['metrics']['distance_m']:.1f}m")
+    active_routes = sum(1 for r in result_v4['solution']['routes'] if r['stop_ids']) if result_v4['solution'] else 0
     print(f"  Active routes: {active_routes} / {len(scenario['vehicle_ids'])}")
     if 'learned' in result_v4:
         print(f"  Learned inference time: {result_v4['learned']['inference_s']:.3f}s")
     
     # 2. Baseline solve (ordered without learned policy, same budget)
-    print("\nRunning baseline solver with 'ordered' selection (budget=10s)...")
+    print("\nRunning baseline solver with 'ordered' selection (budget=30s, restarts=1)...")
     t0 = time.perf_counter()
-    result_base = solve(scenario, budget_s=10.0, seed=42, selection_policy="ordered")
+    result_base = solve(scenario, budget_s=30.0, seed=42, restarts=1, selection_policy="ordered")
     dur_base = time.perf_counter() - t0
     
     print(f"Baseline solve completed in {dur_base:.2f}s:")
     print(f"  Feasible: {result_base['feasibility']}")
     print(f"  Evaluations: {result_base['evaluations']}")
     print(f"  Termination: {result_base['termination_reason']}")
-    print(f"  Best distance: {result_base['validation']['metrics']['distance_m']:.1f}m")
+    if result_base['validation']:
+        print(f"  Best distance: {result_base['validation']['metrics']['distance_m']:.1f}m")
     
-    dist_v4 = result_v4['validation']['metrics']['distance_m']
-    dist_base = result_base['validation']['metrics']['distance_m']
-    diff_m = dist_base - dist_v4
-    print("\n=== Comparative Summary ===")
-    print(f"Policy v4 Best Distance: {dist_v4:.1f} m")
-    print(f"Baseline Best Distance:  {dist_base:.1f} m")
-    print(f"Improvement:             {diff_m:.1f} m ({100.0 * diff_m / dist_base:.2f}%)")
-    print(f"Evaluations (v4 / base): {result_v4['evaluations']} / {result_base['evaluations']}")
+    if result_v4['validation'] and result_base['validation']:
+        dist_v4 = result_v4['validation']['metrics']['distance_m']
+        dist_base = result_base['validation']['metrics']['distance_m']
+        diff_m = dist_base - dist_v4
+        print("\n=== Comparative Summary ===")
+        print(f"Policy v4 Best Distance: {dist_v4:.1f} m")
+        print(f"Baseline Best Distance:  {dist_base:.1f} m")
+        print(f"Improvement:             {diff_m:.1f} m ({100.0 * diff_m / dist_base:.2f}%)")
+        print(f"Evaluations (v4 / base): {result_v4['evaluations']} / {result_base['evaluations']}")
 
 if __name__ == '__main__':
     run_benchmark()
