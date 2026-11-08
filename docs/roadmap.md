@@ -79,6 +79,27 @@ Acceptance: the main computer controls and replays an Ai360 run, client disconne
 - [x] Activate the client R&D navigation and laboratory view (`client/src/RnDView.tsx`) for stochastic stress-testing, model inspection and multi-scale campaign launching on Ai360.
 - [x] Split `maplibre-gl` and `@deck.gl` into separate vendor chunks in the client production build.
 
-## Later
+Acceptance: independent Monte Carlo evaluation matches deterministic accounting at zero dispersion, v1 and v2 checkpoints run reproducibly on CPU, the R&D laboratory controls stochastic tests and multi-scale campaigns from the client, and production chunks build without size warnings.
 
-Traffic microsimulation, calibrated fuel validation, alternative road paths, additional operational constraints and desktop packaging.
+## M7 — Alternative road paths and operational constraints
+
+- [ ] Extract multiple directed road path alternatives per origin-destination leg from OSRM (e.g., fastest vs. shortest/lower-fuel paths) under an explicit path-policy contract.
+- [ ] Extend the independent validator, neighborhood operators and learned feature schema to jointly select stop order and leg path alternatives along the time/fuel trade-off front.
+- [ ] Add optional operational constraints (heterogeneous fleet capacities, mandatory driver breaks or mixed pickup/delivery loads) with independent validation and backward-compatible scenario schemas.
+
+Acceptance: the independent validator verifies path-selection and operational constraints; controlled experiments quantify whether multi-path routing expands the nondominated time/fuel Pareto front compared with fixed single-path routing.
+
+## M8 — Traffic microsimulation and calibrated fuel validation
+
+- [ ] Integrate an offline traffic microsimulation and emissions reference (e.g., Eclipse SUMO) over the frozen city road networks to replay planned schedules under signal timing and congestion dynamics.
+- [ ] Calibrate and benchmark the parametric load-dependent fuel model against microsimulated consumption curves, recording calibration parameters, residuals and validity bounds.
+- [ ] Separate uncalibrated parametric estimates from simulation-calibrated fuel metrics across run artifacts, exports and client views.
+
+Acceptance: a reproducible pipeline evaluates feasible VRP solutions in the traffic microsimulator and reports travel-time drift, window compliance and fuel-model calibration error without claiming real-fleet telemetry equivalence unless measured on physical vehicles.
+
+## M9 — Desktop packaging and standalone distribution
+
+- [ ] Package the TypeScript/React laboratory client as a standalone desktop application (e.g., Tauri) supporting both local loopback execution and authenticated HTTPS/WSS connection to Ai360.
+- [ ] Provide reproducible desktop build scripts, offline static asset bundling and signed release manifests while keeping the Python engine and domain contracts unchanged.
+
+Acceptance: the packaged desktop application passes the same scenario editing, search replay, route playback, R&D and authenticated Ai360 LAN acceptance checks as the browser client.
