@@ -69,7 +69,11 @@ def execute(args):
     jobs=Jobs(args.root)
     if args.action in ('collect','train'):
         if not args.output: raise InputError('phase requires --output directory')
-        return jobs.submit(args.action,dict(input=str(Path(args.input).resolve()),output=str(Path(args.output).resolve()),try_gpu=not args.cpu))
+        req = dict(input=str(Path(args.input).resolve()),output=str(Path(args.output).resolve()),try_gpu=not args.cpu)
+        if getattr(args, 'version', None) is not None: req['version'] = args.version
+        if getattr(args, 'epochs', None) is not None: req['epochs'] = args.epochs
+        if getattr(args, 'timeout_s', None) is not None: req['timeout_s'] = args.timeout_s
+        return jobs.submit(args.action, req)
     if not args.output or not args.checkpoint: raise InputError('evaluate requires --checkpoint and --output frozen directory')
     manifest=freeze(args.input,args.checkpoint,args.output,time.monotonic()+65*60)
     return jobs.submit('experiment',dict(manifest=manifest))

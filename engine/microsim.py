@@ -582,14 +582,21 @@ def parse_sumo_emission_xml(xml_text):
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise InputError(f"invalid SUMO emission XML: {exc}") from exc
-    if root.tag != "emission-export":
+    tag = root.tag.split("}")[-1] if "}" in root.tag else root.tag
+    if tag != "emission-export":
         raise InputError("root XML element must be <emission-export>")
 
     vehicles = {}
     timesteps = 0
-    for ts in root.findall("timestep"):
+    for ts in root:
+        ts_tag = ts.tag.split("}")[-1] if "}" in ts.tag else ts.tag
+        if ts_tag != "timestep":
+            continue
         timesteps += 1
-        for veh in ts.findall("vehicle"):
+        for veh in ts:
+            veh_tag = veh.tag.split("}")[-1] if "}" in veh.tag else veh.tag
+            if veh_tag != "vehicle":
+                continue
             vid = veh.attrib.get("id", "unknown")
             speed = float(veh.attrib.get("speed", "0"))
             waiting = float(veh.attrib.get("waiting", "0"))

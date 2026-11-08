@@ -77,6 +77,9 @@ class MicrosimRequest(BaseModel):
     signal_delay_scale: float=Field(default=1.0,ge=0.0,le=3.0)
 
 
+DESKTOP_ORIGINS = frozenset({'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'})
+
+
 def same_origin(origin,host):
     try:
         parsed=urlparse(origin)
@@ -94,7 +97,7 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         return token is None or (value is not None and hmac.compare_digest(value,token))
 
     def origin_allowed(origin,host):
-        return same_origin(origin,host) or origin in allowed_origins
+        return same_origin(origin,host) or origin in allowed_origins or origin in DESKTOP_ORIGINS
 
     @app.middleware('http')
     async def protect_origin(request:Request,call_next):
@@ -103,14 +106,14 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         origin=request.headers.get('origin')
         if origin and not origin_allowed(origin,request.headers.get('host','')):
             return JSONResponse(status_code=403,content={'detail':'cross-origin request rejected'})
-        if request.method=='OPTIONS' and origin in allowed_origins:
+        if request.method=='OPTIONS' and (origin in allowed_origins or origin in DESKTOP_ORIGINS):
             return JSONResponse(status_code=204,content=None,headers={'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Content-Type, X-VRP-Token','Access-Control-Allow-Methods':'GET, POST, PUT, OPTIONS'})
         if token is not None and not authorized(request.headers.get('x-vrp-token')):
             return JSONResponse(status_code=401,content={'detail':'invalid or missing token'})
         if request.headers.get('content-length','0').isdigit() and int(request.headers.get('content-length','0'))>32*1024*1024:
             return JSONResponse(status_code=413,content={'detail':'request exceeds 32 MiB'})
         response=await call_next(request)
-        if origin in allowed_origins: response.headers['Access-Control-Allow-Origin']=origin
+        if origin in allowed_origins or origin in DESKTOP_ORIGINS: response.headers['Access-Control-Allow-Origin']=origin
         return response
 
     @app.exception_handler(InputError)
@@ -227,7 +230,7 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         env_ckpt=os.environ.get('VRP_LEARNED_CHECKPOINT')
         if env_ckpt and Path(env_ckpt).is_file():
             candidates.append(Path(env_ckpt))
-        for pattern in ('m6-models/*/checkpoint.json','m4-imports/*/checkpoint.json'):
+        for pattern in ('m8-models/*/checkpoint.json', 'm6-models/*/checkpoint.json', 'm4-imports/*/checkpoint.json', 'm4/training/checkpoint.json'):
             candidates.extend(sorted(jobs.root.glob(pattern),key=lambda p:p.stat().st_mtime,reverse=True))
             candidates.extend(sorted(jobs.root.parent.glob(pattern),key=lambda p:p.stat().st_mtime,reverse=True))
         seen=set(); models=[]

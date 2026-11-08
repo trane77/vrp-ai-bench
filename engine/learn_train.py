@@ -4,21 +4,33 @@ import time
 from pathlib import Path
 
 from .contracts import InputError, load_json
-from .learning import FEATURE_SCHEMA, FEATURE_SCHEMA_V2, Policy, signed, verify_hash
+from .learning import FEATURE_SCHEMA, FEATURE_SCHEMA_V2, FEATURE_SCHEMA_V3, Policy, signed, verify_hash
 from .storage import write_json_atomic
 
 
 def export_model(network, metadata, version=1):
     layers = [dict(weight=layer.weight.detach().cpu().tolist(), bias=layer.bias.detach().cpu().tolist())
               for layer in network if hasattr(layer,'weight')]
-    arch = [30,32,16,2] if version == 1 else [38,64,32,2]
-    schema = FEATURE_SCHEMA if version == 1 else FEATURE_SCHEMA_V2
+    if version == 1:
+        arch = [30,32,16,2]
+        schema = FEATURE_SCHEMA
+    elif version == 2:
+        arch = [38,64,32,2]
+        schema = FEATURE_SCHEMA_V2
+    elif version == 3:
+        arch = [46,64,32,2]
+        schema = FEATURE_SCHEMA_V3
+    else:
+        raise InputError(f'unsupported model version: {version}')
     return signed(dict(schema_version=version,kind='learned_policy',architecture=arch,
                        feature_schema=schema,layers=layers,metadata=metadata), 'model_hash')
 
 
 def make_network(version=1):
     import torch
+    if version == 3:
+        return torch.nn.Sequential(torch.nn.Linear(46,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
+                                   torch.nn.ReLU(),torch.nn.Linear(32,2))
     if version == 2:
         return torch.nn.Sequential(torch.nn.Linear(38,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
                                    torch.nn.ReLU(),torch.nn.Linear(32,2))
@@ -26,15 +38,16 @@ def make_network(version=1):
                                torch.nn.ReLU(),torch.nn.Linear(16,2))
 
 
-def probe_gpu():
+def probe_gpu(version=1):
     import torch
     started = time.monotonic()
-    value = dict(attempted=True, device='cuda', torch=torch.__version__, hip=torch.version.hip)
+    value = dict(attempted=True, device='cuda', torch=torch.__version__, hip=getattr(torch.version, 'hip', None))
     try:
         if not torch.cuda.is_available(): raise RuntimeError('PyTorch reports no available GPU')
-        net = make_network().to('cuda'); before = net[0].weight.detach().clone()
+        net = make_network(version=version).to('cuda'); before = net[0].weight.detach().clone()
         optimizer = torch.optim.Adam(net.parameters(),lr=.001)
-        net(torch.ones(8,30,device='cuda')).square().mean().backward(); optimizer.step(); torch.cuda.synchronize()
+        in_dim = 46 if version == 3 else (38 if version == 2 else 30)
+        net(torch.ones(8,in_dim,device='cuda')).square().mean().backward(); optimizer.step(); torch.cuda.synchronize()
         if torch.equal(before,net[0].weight): raise RuntimeError('GPU probe did not update weights')
         value.update(status='passed',name=torch.cuda.get_device_name(0),forward_backward_update=True)
     except Exception as exc:
@@ -53,7 +66,7 @@ def selection_rank(policy, groups):
     return sum(ranks)/len(ranks)
 
 
-def train(collection_path, directory, deadline=None, cancelled=lambda:False, try_gpu=True):
+def train(collection_path, directory, deadline=None, cancelled=lambda:False, try_gpu=True, epochs=50, version=None):
     import numpy as np
     import torch
     started = time.monotonic(); root = Path(directory); root.mkdir(parents=True,exist_ok=True)
@@ -63,9 +76,16 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
     verify_hash(collection,'collection_hash')
     if collection['status'] != 'completed': raise InputError('incomplete sample collection; training stopped')
     groups = {'training':[], 'validation':[]}; identities = {}
+    schema_map = {1: FEATURE_SCHEMA, 2: FEATURE_SCHEMA_V2, 3: FEATURE_SCHEMA_V3}
+    detected_ver = version
     for entry in collection['entries']:
         samples = load_json(collection_path.parent/entry['path']); verify_hash(samples,'samples_hash')
-        if samples['samples_hash'] != entry['samples_hash'] or samples['feature_schema'] != FEATURE_SCHEMA or samples['status'] != 'completed':
+        s_schema = samples.get('feature_schema', {})
+        s_ver = s_schema.get('version')
+        if detected_ver is None:
+            detected_ver = s_ver
+        expected_schema = schema_map.get(detected_ver)
+        if samples['samples_hash'] != entry['samples_hash'] or samples['feature_schema'] != expected_schema or samples['status'] != 'completed':
             raise InputError('incompatible samples')
         split = samples['split']
         if split not in groups: raise InputError('held-out samples are forbidden in training')
@@ -73,14 +93,18 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
         if collection['scenario_splits'].get(identity) != split: raise InputError('sample split is not the frozen scenario split')
         if identity in identities and identities[identity] != split: raise InputError('scenario leakage between splits')
         identities[identity] = split; groups[split] += samples['groups']
+    if detected_ver not in (1, 2, 3):
+        raise InputError(f'unsupported sample schema version: {detected_ver}')
+    ver = detected_ver
     rows = [r for group in groups['training'] for r in group['rows']]
     if not rows or not groups['validation'] or not any(r['improvement'] for r in rows) or not any(r['improvement'] for g in groups['validation'] for r in g['rows']):
         raise InputError('training/validation have insufficient observed improving moves')
-    attempts = [probe_gpu()] if try_gpu else []
+    attempts = [probe_gpu(version=ver)] if try_gpu else []
     device = 'cuda' if attempts and attempts[0]['status']=='passed' else 'cpu'
     metadata = dict(dataset_hash=collection['dataset_hash'],collection_hash=collection['collection_hash'],
+                    schema_version=ver,
                     training_device=device,gpu_attempts=attempts,torch=torch.__version__,numpy=np.__version__,
-                    training_seeds=[0,1,2],learning_rate=.001,batch_size=1024,max_epochs=50,
+                    training_seeds=[0,1,2],learning_rate=.001,batch_size=1024,max_epochs=epochs,
                     selection='mean normalized rank of first actual improvement; ties epoch then seed',
                     validation_groups=len(groups['validation']),training_groups=len(groups['training']))
     write_json_atomic(root/'training-start.json',metadata)
@@ -91,10 +115,10 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
     positive_weight = torch.tensor(negatives/positives,device=device)
     best = None; history = []; completed_seeds = []; parity_error = 0.
     for seed in (0,1,2):
-        torch.manual_seed(seed); network=make_network().to(device)
+        torch.manual_seed(seed); network=make_network(version=ver).to(device)
         initial = network[0].weight.detach().clone()
         optimizer=torch.optim.Adam(network.parameters(),lr=.001)
-        for epoch in range(1,51):
+        for epoch in range(1, epochs + 1):
             if cancelled() or (deadline is not None and time.monotonic() >= deadline):
                 write_json_atomic(root/'training-incomplete.json',dict(status='incomplete',history=history,duration_s=time.monotonic()-started,metadata=metadata))
                 raise RuntimeError('training deadline/cancellation; checkpoint selection not frozen')
@@ -109,7 +133,7 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
                 loss.backward(); optimizer.step()
             if device=='cuda': torch.cuda.synchronize()
             if torch.equal(initial,network[0].weight): raise RuntimeError('training did not update weights')
-            model=export_model(network,dict(metadata,seed=seed,epoch=epoch))
+            model=export_model(network,dict(metadata,seed=seed,epoch=epoch),version=ver)
             policy=Policy(model); rank=selection_rank(policy,groups['validation'])
             with torch.no_grad():
                 raw=network(x[:128]).cpu()

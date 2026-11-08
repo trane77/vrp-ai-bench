@@ -59,10 +59,15 @@ class Worker:
             elif job['kind'] in ('collect','train'):
                 if job['kind']=='collect':
                     from .learn_data import collect
-                    result=collect(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+1500),cancelled=cancelled)
+                    timeout_s = request.get('timeout_s')
+                    deadline = request.get('deadline', time.monotonic() + (timeout_s if timeout_s else 1500))
+                    result=collect(request['input'],request['output'],deadline=deadline,
+                                   cancelled=cancelled,version=request.get('version',1),timeout_s=timeout_s)
                 else:
                     from .learn_train import train
-                    result=train(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+600),cancelled=cancelled,try_gpu=request.get('try_gpu',True))
+                    result=train(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+600),
+                                 cancelled=cancelled,try_gpu=request.get('try_gpu',True),
+                                 epochs=request.get('epochs',50),version=request.get('version'))
                 status='completed' if result.get('status')=='completed' else 'failed'
                 reason='phase_finished' if status=='completed' else 'phase_incomplete'
                 feasibility='unknown'
@@ -94,10 +99,14 @@ class Worker:
                     else:
                         # Walk m4-imports for checkpoint.json files and pick the newest.
                         candidates=[
+                            *self.jobs.root.glob('m8-models/*/checkpoint.json'),
+                            *self.jobs.root.parent.glob('m8-models/*/checkpoint.json'),
                             *self.jobs.root.glob('m6-models/*/checkpoint.json'),
                             *self.jobs.root.parent.glob('m6-models/*/checkpoint.json'),
                             *self.jobs.root.glob('m4-imports/*/checkpoint.json'),
                             *self.jobs.root.parent.glob('m4-imports/*/checkpoint.json'),
+                            *self.jobs.root.glob('m4/training/checkpoint.json'),
+                            *self.jobs.root.parent.glob('m4/training/checkpoint.json'),
                         ]
                         if not candidates:
                             raise InputError(
@@ -138,9 +147,18 @@ class Worker:
 
     def run(self):
         self.acquire()
+        import signal
+        stop_requested = False
+        def _on_signal(signum, frame):
+            nonlocal stop_requested
+            stop_requested = True
+        old_sigterm = signal.signal(signal.SIGTERM, _on_signal)
+        old_sigint = signal.signal(signal.SIGINT, _on_signal)
         try:
-            while not (self.jobs.root/'worker.stop').exists():
+            while not stop_requested and not (self.jobs.root/'worker.stop').exists():
                 if not self.execute_one(): time.sleep(.25)
         finally:
+            signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
             (self.jobs.root/'worker.stop').unlink(missing_ok=True)
             self.close()

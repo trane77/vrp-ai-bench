@@ -7,7 +7,7 @@ import time
 
 from .contracts import InputError, load_json, validate_scenario
 from .drafts import make_draft, prepare_draft
-from .learning import Features, FEATURE_SCHEMA, signed, verify_hash
+from .learning import Features, FEATURE_SCHEMA, FEATURE_SCHEMA_V2, FEATURE_SCHEMA_V3, signed, verify_hash
 from .moves import enumerate_moves
 from .solver import proposal, scenario_hash, solve
 from .storage import write_json_atomic
@@ -121,22 +121,28 @@ def label_state(s, solution, cancelled=lambda:False, version=1):
 
 
 def collect_trajectory(task):
-    s, entry, method, weight, output, deadline, cancel_path = task
+    if len(task) == 8:
+        s, entry, method, weight, output, deadline, cancel_path, version = task
+    else:
+        s, entry, method, weight, output, deadline, cancel_path = task
+        version = 1
     stopped=lambda: time.monotonic()>=deadline or Path(cancel_path).exists()
     started = time.monotonic(); states = []
     s = copy.deepcopy(s); s['objective'].update(time_weight=weight, fuel_weight=1-weight)
+    schema_map = {1: FEATURE_SCHEMA, 2: FEATURE_SCHEMA_V2, 3: FEATURE_SCHEMA_V3}
+    schema = schema_map.get(version, FEATURE_SCHEMA)
     def observe(kind,payload,elapsed):
         if kind == 'feasible_best' and len(states) < 3: states.append(copy.deepcopy(payload['solution']))
     value = dict(schema_version=1, kind='learned_samples', scenario_id=entry['id'], split=entry['split'],
                  scenario_hash=entry['scenario_hash'], method=method, time_weight=weight, seed=10,
-                 feature_schema=FEATURE_SCHEMA, groups=[])
+                 feature_schema=schema, groups=[])
     try:
         result = solve(s, seed=10, restarts=1, max_evaluations=1000, budget_s=min(30., max(0,deadline-time.monotonic())), observe=observe,
                        selection_policy=method, cancelled=stopped)
         value.update(termination_reason=result['termination_reason'], feasibility=result['feasibility'])
         for state in states:
             if stopped(): raise RuntimeError('collection phase deadline or cancellation')
-            value['groups'].append(label_state(s, state, stopped))
+            value['groups'].append(label_state(s, state, stopped, version=version))
         value['status'] = 'completed'
     except Exception as exc:
         value.update(status='failed', error=f'{type(exc).__name__}: {exc}')
@@ -145,10 +151,13 @@ def collect_trajectory(task):
     return dict(path=Path(output).name, samples_hash=value['samples_hash'], status=value['status'], groups=len(value['groups']))
 
 
-def collect(dataset_path, directory, deadline=None, cancelled=lambda:False, processes=4):
+def collect(dataset_path, directory, deadline=None, cancelled=lambda:False, processes=4, version=1, timeout_s=None):
     data, scenarios = read_dataset(dataset_path); root = Path(directory); root.mkdir(parents=True,exist_ok=True)
-    deadline = deadline if deadline is not None else time.monotonic()+25*60
-    tasks = [(scenarios[e['id']],e,method,weight,str(root/f"{e['id']}-{method}-{weight}.json"),deadline,str(root/'collection.cancel'))
+    if timeout_s is not None:
+        deadline = time.monotonic() + timeout_s
+    else:
+        deadline = deadline if deadline is not None else time.monotonic() + 25 * 60
+    tasks = [(scenarios[e['id']],e,method,weight,str(root/f"{e['id']}-{method}-{weight}.json"),deadline,str(root/'collection.cancel'),version)
              for e in data['entries'] if e['split'] != 'test' for method in ('ordered','shuffled') for weight in (1,.5,0)]
     entries = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=processes, mp_context=multiprocessing.get_context('spawn')) as pool:

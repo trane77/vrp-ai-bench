@@ -27,12 +27,24 @@ FEATURES_V2 = FEATURES + [
 ]
 FEATURE_SCHEMA_V2 = dict(version=2, names=FEATURES_V2, normalization='stop-count-capacity-scenario-scales-v2')
 
+FEATURES_V3 = FEATURES_V2 + [
+    'source_delivery_mass_ratio',
+    'dest_delivery_mass_ratio',
+    'has_driver_break',
+    'source_break_urgency',
+    'dest_break_urgency',
+    'has_path_alternatives',
+    'is_fuel_calibrated',
+    'traffic_slow_urban_ratio',
+]
+FEATURE_SCHEMA_V3 = dict(version=3, names=FEATURES_V3, normalization='stop-count-capacity-scenario-scales-v3')
+
 
 class Features:
     def __init__(self, scenario, routes, validation, version=1):
         if not validation['feasible']:
             raise InputError('features require a validated current solution')
-        if version not in (1, 2):
+        if version not in (1, 2, 3):
             raise InputError('unsupported feature schema version')
         self.version = version
         self.s, self.routes, self.report = scenario, routes, validation
@@ -50,6 +62,34 @@ class Features:
         self.route_volume = [sum(self.stops[v]['volume_m3'] for v in route) for route in routes]
         self.route_arcs = [self._single_route_arc_cost(route) for route in routes]
         self.current_arcs = self.arc_cost(routes)
+        if version == 3:
+            veh_caps = scenario.get('vehicle_capacities') or {}
+            self.capacities = [veh_caps.get(vid, scenario['capacity']) for vid in scenario['vehicle_ids']]
+            self.route_delivery_mass = [sum(self.stops[v].get('delivery_mass_kg', 0) for v in route) for route in routes]
+            self.leg_has_alts = {(leg['source'], leg['target']): bool(leg.get('alternatives')) for leg in scenario['legs']}
+            self.leg_segments = {(leg['source'], leg['target']): leg.get('segments', []) for leg in scenario['legs']}
+            brk = scenario.get('driver_break')
+            self.has_driver_break = 1.0 if (brk and brk.get('enabled')) else 0.0
+            if self.has_driver_break:
+                thresh = max(1.0, float(brk.get('threshold_s', 14400)))
+                urgencies = []
+                for v_rep in self.report['vehicles']:
+                    work = 0.0
+                    v_visits = {v['stop_id']: v for v in v_rep.get('visits', [])}
+                    for leg in v_rep.get('legs', []):
+                        work += float(leg.get('travel_s', 0))
+                        target = leg.get('target')
+                        if target != self.s['depot_id']:
+                            vis = v_visits.get(target)
+                            if vis:
+                                dur = float(vis.get('departure_s', 0)) - float(vis.get('service_start_s', 0)) - float(vis.get('break_s', 0))
+                                work += max(0.0, dur)
+                                if vis.get('break_s', 0) > 0:
+                                    work = 0.0
+                    urgencies.append(min(1.0, max(0.0, work / thresh)))
+                self.route_break_urgency = urgencies
+            else:
+                self.route_break_urgency = [0.0] * len(routes)
 
     def _single_route_arc_cost(self, route):
         if not route:
@@ -116,7 +156,7 @@ class Features:
             dt = (new_t - old_t) / ts
             df = (new_f - old_f) / fs
         x += [dt, df]
-        if self.version == 2:
+        if self.version in (2, 3):
             cap_s = s['duration_cap_s']
             src_dur = self.report['vehicles'][move.a]['metrics']['fleet_elapsed_s']
             dst_dur = self.report['vehicles'][move.b]['metrics']['fleet_elapsed_s']
@@ -136,7 +176,53 @@ class Features:
                 loaded_fuel_delta,
                 urgency_b - urgency_a,
             ]
-        expected_len = 30 if self.version == 1 else 38
+        if self.version == 3:
+            cap_a = self.capacities[move.a] if move.a < len(self.capacities) else s['capacity']
+            cap_b = self.capacities[move.b] if move.b < len(self.capacities) else s['capacity']
+            src_deliv_ratio = self.route_delivery_mass[move.a] / max(1.0, float(cap_a.get('mass_kg', 1.0)))
+            dst_deliv_ratio = self.route_delivery_mass[move.b] / max(1.0, float(cap_b.get('mass_kg', 1.0)))
+            src_brk_urg = self.route_break_urgency[move.a] if move.a < len(self.route_break_urgency) else 0.0
+            dst_brk_urg = self.route_break_urgency[move.b] if move.b < len(self.route_break_urgency) else 0.0
+
+            affected_legs = []
+            for veh_idx, pos in ((move.a, move.i), (move.b, second)):
+                if veh_idx < len(routes) and pos < len(routes[veh_idx]):
+                    r = routes[veh_idx]
+                    prev_node = r[pos - 1] if pos > 0 else s['depot_id']
+                    curr_node = r[pos]
+                    next_node = r[pos + 1] if pos + 1 < len(r) else s['depot_id']
+                    affected_legs.append((prev_node, curr_node))
+                    affected_legs.append((curr_node, next_node))
+
+            if affected_legs:
+                has_alts_ratio = sum(1.0 for leg in affected_legs if self.leg_has_alts.get(leg, False)) / len(affected_legs)
+                tot_dist = 0.0
+                slow_dist = 0.0
+                for leg in affected_legs:
+                    for seg in self.leg_segments.get(leg, []):
+                        d = float(seg.get('distance_m', 0))
+                        tot_dist += d
+                        cat = seg.get('driving_category', '')
+                        if 'slow' in cat or 'urban' in cat:
+                            slow_dist += d
+                traffic_ratio = (slow_dist / tot_dist) if tot_dist > 0.0 else 0.0
+            else:
+                has_alts_ratio = 0.0
+                traffic_ratio = 0.0
+
+            is_calibrated = 1.0 if s.get('fuel_model', {}).get('calibration') == 'microsim_calibrated' else 0.0
+
+            x += [
+                src_deliv_ratio,
+                dst_deliv_ratio,
+                self.has_driver_break,
+                src_brk_urg,
+                dst_brk_urg,
+                has_alts_ratio,
+                is_calibrated,
+                traffic_ratio,
+            ]
+        expected_len = 30 if self.version == 1 else (38 if self.version == 2 else 46)
         if len(x) != expected_len or not all(math.isfinite(v) for v in x):
             raise InputError('nonfinite or incompatible feature vector')
         return x
@@ -168,6 +254,12 @@ class Policy:
             expected_shapes = ((38, 64), (64, 32), (32, 2))
             self.feature_version = 2
             self.input_dim = 38
+        elif schema_ver == 3:
+            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA_V3 or model.get('architecture') != [46,64,32,2]:
+                raise InputError('incompatible learned v3 checkpoint')
+            expected_shapes = ((46, 64), (64, 32), (32, 2))
+            self.feature_version = 3
+            self.input_dim = 46
         else:
             raise InputError('incompatible learned checkpoint')
         self.model = model
