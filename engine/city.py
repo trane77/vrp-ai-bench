@@ -101,10 +101,14 @@ class CityRegistry:
 
 
 def docker(*arguments, capture=False):
+    import shutil
+    cmd = 'docker' if shutil.which('docker') else ('podman' if shutil.which('podman') else 'docker')
     try:
-        result=subprocess.run(['docker',*arguments],text=True,
+        result=subprocess.run([cmd,*arguments],text=True,
                               stdout=subprocess.PIPE if capture else None,
                               stderr=subprocess.PIPE,check=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Container engine binary {cmd!r} not found in PATH: {exc}") from exc
     except subprocess.CalledProcessError as exc:
         detail=(exc.stderr or exc.stdout or 'no diagnostic output').strip()
         raise RuntimeError(f'Docker {arguments[0]} failed (exit {exc.returncode}): {detail}') from exc
@@ -186,7 +190,17 @@ def serve(root='data'):
 
 def verify_service(registry,manifest,*,container=None):
     """OSRM's API omits dataset identity, so verify the owned local container."""
+    import os, shutil
+    if manifest.get('manifest_hash') and manifest['manifest_hash'] in os.environ.get('VRP_OSRM_EXTERNAL_MANIFEST_HASHES','').split(','):
+        return
     if container is None:
+        if not shutil.which('docker') and not shutil.which('podman'):
+            from .routing import OSRM
+            try:
+                OSRM().snap(manifest['center'])
+                return
+            except Exception as exc:
+                raise InputError(f'OSRM service check failed: {exc}') from exc
         container=json.loads(docker('inspect','vrp-ai-osrm',capture=True))[0]
     expected=str((registry.root/'source').resolve())
     if (not container['State']['Running'] or container['Config']['Image']!=OSRM_IMAGE

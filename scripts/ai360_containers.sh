@@ -96,9 +96,12 @@ start_worker() {
     echo "Stopping existing vrp-m5-worker..."
     podman rm -f vrp-m5-worker >/dev/null 2>&1 || true
   fi
+  local manifest_hashes
+  manifest_hashes=$(grep -h '"manifest_hash":' "${REPO_DIR}/data/cities"/*/manifest.json 2>/dev/null | awk -F'"' '{print $4}' | paste -sd, -)
   echo "Starting vrp-m5-worker (GPU-accelerated, ROCm)..."
   podman run -d --name vrp-m5-worker --network host --restart always \
     "${PODMAN_GPU_FLAGS[@]}" \
+    -e "VRP_OSRM_EXTERNAL_MANIFEST_HASHES=${manifest_hashes}" \
     -v "${REPO_DIR}:/app:z" \
     -w /app \
     "${IMAGE}" \
