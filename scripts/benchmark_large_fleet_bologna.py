@@ -30,7 +30,7 @@ def run_benchmark():
     print("\nLoading Policy v4 GPU checkpoint...")
     model = load_json("runs/m4-v4-gpu/checkpoint.json")
     policy = Policy(model)
-    print(f"Policy loaded (v{model['schema_version']}, {len(model['feature_schema']['features'])} features, hash: {model['model_hash'][:16]}...)")
+    print(f"Policy loaded (v{model['schema_version']}, {len(model['feature_schema']['names'])} features, hash: {model['model_hash'][:16]}...)")
     
     # 3. Solve with Policy v4 and spatial pruning (budget: 10s)
     print("\nRunning local search solver with Policy v4 and spatial neighborhood pruning (budget=10s)...")
@@ -42,9 +42,11 @@ def run_benchmark():
     print(f"  Feasible: {result_v4['feasibility']}")
     print(f"  Evaluations: {result_v4['evaluations']}")
     print(f"  Termination: {result_v4['termination_reason']}")
-    print(f"  Best distance: {result_v4['solution']['distance_m']:.1f}m")
+    print(f"  Best distance: {result_v4['validation']['metrics']['distance_m']:.1f}m")
     active_routes = sum(1 for r in result_v4['solution']['routes'] if r['stop_ids'])
     print(f"  Active routes: {active_routes} / {len(scenario['vehicle_ids'])}")
+    if 'learned' in result_v4:
+        print(f"  Learned inference time: {result_v4['learned']['inference_s']:.3f}s")
     
     # 4. Baseline solve (without learned policy, same budget)
     print("\nRunning baseline solver without learned policy (budget=10s)...")
@@ -56,10 +58,10 @@ def run_benchmark():
     print(f"  Feasible: {result_base['feasibility']}")
     print(f"  Evaluations: {result_base['evaluations']}")
     print(f"  Termination: {result_base['termination_reason']}")
-    print(f"  Best distance: {result_base['solution']['distance_m']:.1f}m")
+    print(f"  Best distance: {result_base['validation']['metrics']['distance_m']:.1f}m")
     
-    dist_v4 = result_v4['solution']['distance_m']
-    dist_base = result_base['solution']['distance_m']
+    dist_v4 = result_v4['validation']['metrics']['distance_m']
+    dist_base = result_base['validation']['metrics']['distance_m']
     diff_m = dist_base - dist_v4
     print("\n=== Comparative Summary ===")
     print(f"Policy v4 Best Distance: {dist_v4:.1f} m")
