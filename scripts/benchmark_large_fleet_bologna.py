@@ -8,7 +8,7 @@ from engine.validation import validate_solution
 
 def run_benchmark():
     # Load Bologna city manifest
-    manifest = load_json("data/cities/bologna.json")
+    manifest = load_json("data/cities/bologna/manifest.json")
     
     # 1. Draft generation for 50 vehicles on Bologna
     print("Generating 50-vehicle scenario draft on Bologna...")
