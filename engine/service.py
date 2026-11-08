@@ -114,12 +114,11 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         manifest=registry.get(body.data.get('city_id'))
         data=validate_draft(body.data,manifest)
         existing=jobs.draft(id)['data']
-        def stop_shape(stops):
-            return [(s['id'],s['coordinate'],s['packages'],s['mass_kg'],s['volume_m3']) for s in stops]
-        if data['depot']!=existing['depot'] or stop_shape(data['stops'])!=stop_shape(existing['stops']):
+        def stop_demands(stops):
+            return [(s['id'],s['packages'],s['mass_kg'],s['volume_m3']) for s in stops]
+        if data['depot']!=existing['depot'] or stop_demands(data['stops'])!=stop_demands(existing['stops']):
             data['mode']='edited_demo'
-        elif data['parameters']['vehicle_ids']!=existing['parameters']['vehicle_ids'] or all(
-            s['window_open_s']==0 and s['window_close_s']==28800 for s in data['stops']):
+        elif data['parameters']['vehicle_ids']!=existing['parameters']['vehicle_ids']:
             data['mode']='witness_demo'
         return jobs.save_draft(data,id,body.revision)
 

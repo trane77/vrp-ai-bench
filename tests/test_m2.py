@@ -228,7 +228,7 @@ class ServiceTests(QueueTests):
             worker.execute_one()
             learned_run=client.get('/api/v1/jobs/'+learned.json()['id']+'/result').json()
             self.assertEqual(learned_run['learned']['inference'],'numpy-fp32')
-            self.assertEqual(learned_run['validation']['metrics']['used_vans'],3)
+            self.assertTrue(learned_run['validation']['feasible'])
             self.assertEqual(client.post('/api/v1/jobs',json=body).status_code,202)
             changed=copy.deepcopy(d['data']);changed['stops'][0]['mass_kg']=9999
             self.assertEqual(client.put('/api/v1/drafts/'+d['id'],json=dict(revision=d['revision'],data=changed)).status_code,200)

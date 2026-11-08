@@ -82,17 +82,44 @@ function Field({
   min?: number;
   step?: number;
 }) {
+  const format = (v: number | string) => String(v).replace(".", ",");
+  const [text, setText] = useState(() => format(value));
+  useEffect(() => {
+    setText(format(value));
+  }, [value]);
+  const decimals = (String(step).split(".")[1] ?? "").length;
+  const round = (n: number) =>
+    decimals > 0 ? Number(n.toFixed(decimals)) : Math.round(n);
   return (
     <label className="field">
       {label}
       <input
-        type="number"
-        min={min}
-        step={step}
-        value={value}
-        onChange={(e) =>
-          onChange(e.target.value === "" ? 0 : Number(e.target.value))
-        }
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setText(raw);
+          const normalized = raw.trim().replace(",", ".");
+          if (normalized === "" || normalized === "-" || normalized === ".") {
+            onChange(0);
+            return;
+          }
+          const parsed = Number(normalized);
+          if (!Number.isNaN(parsed)) {
+            onChange(Math.max(min, parsed));
+          }
+        }}
+        onBlur={() => setText(format(value))}
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+          e.preventDefault();
+          const current = Number(String(value).replace(",", ".")) || 0;
+          const delta = e.key === "ArrowUp" ? step : -step;
+          const next = Math.max(min, round(current + delta));
+          setText(format(next));
+          onChange(next);
+        }}
       />
     </label>
   );

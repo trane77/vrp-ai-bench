@@ -127,15 +127,14 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
         for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
         lookup={(leg['source'],leg['target']):leg for leg in legs}
         stops={stop['id']:stop for stop in s['stops']}
-        margin=300 if len(routes)<=2 else 60
         for route in routes:
             now=s['start_s']; previous='depot'
             for id in route:
                 leg=lookup[previous,id]
                 if not leg['reachable']: raise InputError('demo witness contains an unreachable leg')
                 now+=leg['travel_s']; stop=stops[id]
-                stop['window_open_s']=max(s['start_s'],now-margin)
-                stop['window_close_s']=now+margin
+                stop['window_open_s']=max(s['start_s'],now-300)
+                stop['window_close_s']=now+300
                 service=s['service']
                 now+=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
                 previous=id
