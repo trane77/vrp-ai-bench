@@ -51,27 +51,14 @@ import type {
 } from "./types";
 import "./style.css";
 import Comparisons from "./Comparisons";
+import { endpoint, request, streamUrl, token } from "./connection";
 
 async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch("/api/v1" + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!response.ok) {
-    const data = await response
-      .json()
-      .catch(() => ({ detail: response.statusText }));
-    throw new Error(
-      typeof data.detail === "string"
-        ? data.detail
-        : JSON.stringify(data.detail),
-    );
-  }
+  const response = await request("/api/v1" + path, method, body);
   return response.json();
 }
 const terminal = (j: Job | null) =>
@@ -112,6 +99,8 @@ function Field({
 }
 
 function App() {
+  const [remoteEndpoint, setRemoteEndpoint] = useState(() => endpoint() === location.origin ? "" : endpoint());
+  const [remoteToken, setRemoteToken] = useState(() => token());
   const [cities, setCities] = useState<City[]>([]),
     [city, setCity] = useState("bologna");
   const [citiesLoading, setCitiesLoading] = useState(true);
@@ -130,6 +119,7 @@ function App() {
   const [seed, setSeed] = useState(42),
     [count, setCount] = useState(20),
     [budget, setBudget] = useState(10);
+  const [policy, setPolicy] = useState<"cpu" | "learned">("cpu");
   const [selected, setSelected] = useState<string | null>("depot"),
     [tool, setTool] = useState("select"),
     [mode, setMode] = useState<"search" | "route">("search");
@@ -234,8 +224,10 @@ function App() {
           : ed.data.seed,
       );
       setCount(ed.data.stops.length);
-      if (selectedJob.kind === "solve")
+      if (selectedJob.kind === "solve") {
         setBudget(selectedJob.request.budget_s ?? 10);
+        setPolicy(selectedJob.request.policy === "learned" ? "learned" : "cpu");
+      }
       setDirty(false);
       const prep =
         selectedJob.kind === "prepare"
@@ -326,12 +318,7 @@ function App() {
       retry: ReturnType<typeof setTimeout>;
     const connect = () => {
       if (disposed) return;
-      const url = new URL(
-        `/api/v1/jobs/${id}/stream?after=${eventsRef.current.at(-1)?.seq ?? 0}`,
-        location.href,
-      );
-      url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      socket = new WebSocket(url);
+      socket = new WebSocket(streamUrl(`/api/v1/jobs/${id}/stream?after=${eventsRef.current.at(-1)?.seq ?? 0}`));
       socket.onopen = () => setConnected(true);
       socket.onmessage = (message) => {
         if (disposed) return;
@@ -465,11 +452,11 @@ function App() {
     }, 50);
     return () => clearInterval(tick);
   }, [playing, speed, mode, reduced, run]);
-  function edit(change: (draft: Draft) => void) {
+  function edit(change: (draft: Draft) => void, preserveMode = false) {
     if (!draft || active) return;
     const copy = structuredClone(draft);
     change(copy);
-    copy.mode = "edited_demo";
+    if (!preserveMode) copy.mode = "edited_demo";
     setDraft(copy);
     setDirty(true);
     setScenario(null);
@@ -484,7 +471,8 @@ function App() {
   function params<K extends keyof Parameters>(key: K, value: Parameters[K]) {
     edit((d) => {
       d.parameters[key] = value;
-    });
+      if (key === "vehicle_ids") d.mode = "witness_demo";
+    }, true);
   }
   async function createDemo() {
     await perform(async () => {
@@ -538,6 +526,7 @@ function App() {
         prepared_job_id: preparedId,
         seed,
         budget_s: budget,
+        policy,
       });
       await openJob(queued.id);
     });
@@ -620,7 +609,7 @@ function App() {
             VRP<span>AI</span>
             <span className="brand-divider" />
             <small>{it.app}</small>
-            <span className="version">M2 / CPU</span>
+            <span className="version">M5 / CPU+M4</span>
           </div>
           <div className="header-status">
             <span className="local-pill">
@@ -633,6 +622,20 @@ function App() {
             </span>
           </div>
         </header>
+        <form className="connection-settings" onSubmit={(e) => {
+          e.preventDefault();
+          const value = remoteEndpoint.trim().replace(/\/$/, "");
+          if (value && (!value.startsWith("https://") || new URL(value).pathname !== "/")) {
+            setError("L'endpoint Ai360 deve essere un'origine HTTPS senza percorso."); return;
+          }
+          sessionStorage.setItem("vrp-endpoint", value || location.origin);
+          sessionStorage.setItem("vrp-token", remoteToken.trim());
+          location.reload();
+        }}>
+          <label>Ai360 HTTPS <input aria-label="Ai360 HTTPS" placeholder="https://ai360.lan:8000" value={remoteEndpoint} onChange={(e) => setRemoteEndpoint(e.target.value)} /></label>
+          <label>Token <input aria-label="Token Ai360" type="password" autoComplete="off" value={remoteToken} onChange={(e) => setRemoteToken(e.target.value)} /></label>
+          <button type="submit">Connetti</button>
+        </form>
         <div className="intro">
           <div>
             <div className="eyebrow">
@@ -947,6 +950,20 @@ function App() {
                 <Layers3 size={15} />
                 {it.prepare}
               </button>
+              <label className="field">
+                {it.policyLabel}
+                <select
+                  aria-label={it.policyLabel}
+                  value={policy}
+                  disabled={active || busy}
+                  onChange={(e) =>
+                    setPolicy(e.target.value as "cpu" | "learned")
+                  }
+                >
+                  <option value="cpu">{it.policyCpu}</option>
+                  <option value="learned">{it.policyLearned}</option>
+                </select>
+              </label>
               <button
                 className="primary full"
                 disabled={!preparedId || dirty || active || busy}
@@ -1038,11 +1055,19 @@ function App() {
                       it.reason[job.termination_reason ?? ""] ??
                       (job.kind === "prepare"
                         ? "Preparazione dati stradali"
-                        : "Ricerca CPU")}
+                        : job.request?.policy === "learned"
+                          ? "Politica appresa (M4)"
+                          : "Ricerca CPU")}
                   </p>
+                  {job.kind === "solve" && job.request?.policy === "learned" && (
+                    <p className="mono" style={{ fontSize: "0.75em", opacity: 0.7 }}>M4 learned policy</p>
+                  )}
                   {job.kind === "solve" &&
                     job.status === "completed" &&
                     job.feasibility === "unknown" && <p>{it.noRoute}</p>}
+                  {active && job.status === "queued" && (
+                    <p className="warning" style={{ fontSize: "0.8em" }}>{it.queuedWarning}</p>
+                  )}
                   {active && progress?.total && (
                     <div className="progress">
                       <span
@@ -1529,7 +1554,11 @@ function App() {
                   <span className={`status-dot ${h.status}`} />
                   <span>
                     <strong>
-                      {h.kind === "prepare" ? "Preparazione" : "Ricerca CPU"}
+                      {h.kind === "prepare"
+                        ? "Preparazione"
+                        : h.request?.policy === "learned"
+                          ? it.policyLearned
+                          : "Ricerca CPU"}
                     </strong>
                     <small>
                       {h.id.slice(0, 8)} ·{" "}

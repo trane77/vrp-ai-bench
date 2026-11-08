@@ -3,7 +3,7 @@
 Status: steps 1–3 (M1) and steps 4–6 (M2) are implemented. The user authorized
 M2 with Bologna/Modena, local OSRM, editable demo appointments and an online
 basemap. Step 7 is implemented under the confirmed M3 pilot scope; step 8 is separately authorized by the M4 plan and implemented with the complete held-out campaign and
-acceptance checks verified; step 9 LAN deployment remains planned. See [M3 operations](m3-comparisons.md) for actual verification and limitations.
+acceptance checks verified; step 9 (M5) authenticated LAN deployment on Ai360 and main-computer acceptance are implemented and verified. See [M3 operations](m3-comparisons.md), [M4 operations](m4-learning.md) and [M5 LAN operations](m5-lan.md) for actual verification and limitations.
 
 ## Starting point and decisions
 
@@ -11,7 +11,7 @@ The local environment inspected on 2026-11-07 exposes Python 3.12.3, Node.js 24.
 
 Use the provisional semantics in requirements.md explicitly: collection-only, one depot, homogeneous vans, inclusive service-start windows and duration measured through depot return. Keep capacities, package properties and fuel coefficients configurable. No real fleet calibration is implied.
 
-M2 uses Bologna and Modena, configurable demo depots, 5 km service areas and local OSRM over a frozen Geofabrik Nord-Est snapshot. Choose a project license before publication. Ai360 batch compatibility was inspected for M4; LAN deployment remains deferred.
+M2 uses Bologna and Modena, configurable demo depots, 5 km service areas and local OSRM over a frozen Geofabrik Nord-Est snapshot. Choose a project license before publication. Ai360 batch compatibility was verified for M4 and authenticated LAN service deployment was verified for M5.
 
 ## 1. Establish the executable foundation (M1)
 
@@ -83,7 +83,7 @@ Deliverable: the main computer controls and replays a persistent Ai360 worker ru
 
 ## Execution discipline
 
-Implement one slice at a time. M1 and M2 are implemented; M3 follows the confirmed two-instance classical pilot; learned search follows the separately confirmed M4 scope; LAN deployment remains future work. At each boundary,
+Implement one slice at a time. M1 and M2 are implemented; M3 follows the confirmed two-instance classical pilot; learned search follows the separately confirmed M4 scope; M5 authenticated LAN deployment is implemented and verified on Ai360. At each boundary,
 record commands actually run, acceptance results and remaining limitations; update
 README.md and roadmap.md consistently. Keep downloads, runs, datasets and
 checkpoints out of Git. Do not add later-stage dependencies or fabricate
@@ -126,3 +126,21 @@ M2 verification: 49 Python tests, 6 client unit tests, production build and 4
 Chromium checks passed, including the real-city acceptance flow. The software-WebGL
 playback p95 was about 100 ms; the provisional 50 ms target remains unmet and is
 recorded as a prototype limitation, not hidden by the functional test result.
+
+### M3–M5 implementation notes
+
+- **M3**: Ordered/shuffled classical variants, optional OR-Tools elapsed-time adapter,
+  frozen 102-case pilot (84 main + 18 recording controls), anytime curves, found
+  nondominated fronts and synchronized comparison maps. Verified in
+  [M3 operations](m3-comparisons.md).
+- **M4**: Two-head 30→32→16→2 supervised move-ordering policy over shared classical
+  operators, 40 road-backed scenarios (24/8/8 splits), portable NumPy FP32 CPU
+  inference, detached Ai360 Podman batch execution, and complete 336-case held-out
+  campaign with independent audit and repeatable import. Verified in
+  [M4 operations](m4-learning.md).
+- **M5**: Authenticated HTTPS/WSS LAN service on Ai360 (`vrp-m5-osrm`,
+  `vrp-m5-service`, `vrp-m5-worker`), mandatory TLS and external token file on LAN
+  binds, origin/host/IP filtering, access-log suppression when token auth is active,
+  `sessionStorage` client connection bar, interactive `cpu`/`learned` policy
+  selection, and audited main-computer acceptance with mid-search WebSocket
+  disconnect/reconnect cursor verification. Verified in [M5 LAN operations](m5-lan.md).

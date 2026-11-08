@@ -190,6 +190,7 @@ export interface Job {
     prepared_job_id?: string;
     seed?: number;
     budget_s?: number;
+    policy?: "cpu" | "learned";
   };
   last_seq: number;
   error: string | null;

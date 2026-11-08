@@ -1,0 +1,14 @@
+[Unit]
+Description=VRP AI HTTPS service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/PATH/TO/vrp-ai
+ExecStart=/PATH/TO/vrp-ai/.venv/bin/python -m engine serve --host AI360_LAN_IP --server-name AI360_DNS_NAME --port 8000 --certfile /PATH/TO/cert.pem --keyfile /PATH/TO/key.pem --token-file /PATH/TO/token --allowed-origin http://127.0.0.1:8000
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

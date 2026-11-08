@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Scenario, Solution, Validation } from "./types";
+import { request } from "./connection";
 const MapView = lazy(() => import("./MapView"));
 type Case = {
   id: string;
@@ -56,13 +57,7 @@ async function get<T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch("/api/v1/experiments" + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!response.ok)
-    throw Error((await response.json()).detail ?? "Richiesta fallita");
+  const response = await request("/api/v1/experiments" + path, method, body);
   return response.json();
 }
 export function compatibleCases(a: Case, b: Case) {
@@ -441,13 +436,19 @@ export default function Comparisons() {
         ["completed", "cancelled", "failed"].includes(campaign.status) && (
           <p>
             {["json", "csv", "md"].map((format) => (
-              <a
+              <button
                 key={format}
-                href={"/api/v1/experiments/" + id + "/export/" + format}
-                download
+                onClick={() => request("/api/v1/experiments/" + id + "/export/" + format)
+                  .then((response) => response.blob())
+                  .then((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement("a");
+                    link.href = url; link.download = `report.${format}`; link.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                  }).catch((error) => alert(error.message))}
               >
                 Scarica {format.toUpperCase()}{" "}
-              </a>
+              </button>
             ))}
           </p>
         )}

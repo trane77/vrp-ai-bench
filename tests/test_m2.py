@@ -180,8 +180,9 @@ class QueueTests(unittest.TestCase):
         old=self.draft['revision'];new=copy.deepcopy(self.draft['data']);new['seed']=43
         self.jobs.save_draft(new,self.draft['id'],old)
         with self.assertRaises(Conflict):self.prepare_job()
-        self.draft=self.jobs.draft(self.draft['id']);job=self.prepare_job();self.jobs.cancel(job['id'])
-        self.worker().execute_one()
+        self.draft=self.jobs.draft(self.draft['id']);job=self.prepare_job();cancelled=self.jobs.cancel(job['id'])
+        self.assertEqual(cancelled['status'],'cancelled')
+        self.assertFalse(self.worker().execute_one())
         self.assertEqual(self.jobs.get(job['id'])['status'],'cancelled')
 
     def test_solve_terminal_snapshot_equals_saved_result(self):
@@ -209,10 +210,25 @@ class ServiceTests(QueueTests):
     def test_api_revisions_and_prepared_identity(self):
         with self.client() as client:
             d=client.post('/api/v1/drafts',json=dict(city_id='bologna',count=3)).json()
+            fleet_edit=copy.deepcopy(d['data']);fleet_edit['parameters']['vehicle_ids']=['van-1','van-2','van-3']
+            d=client.put('/api/v1/drafts/'+d['id'],json=dict(revision=d['revision'],data=fleet_edit)).json()
+            self.assertEqual(d['data']['mode'],'witness_demo')
             body=dict(kind='prepare',draft_id=d['id'],revision=d['revision'])
             r=client.post('/api/v1/jobs',json=body);self.assertEqual(r.status_code,202,r.text)
-            id=r.json()['id'];self.worker().execute_one()
+            id=r.json()['id'];worker=self.worker();worker.execute_one()
+            self.assertEqual(client.get('/api/v1/jobs/'+id+'/editor').json()['mode'],'witness_demo')
             body.update(kind='solve',prepared_job_id=id)
+            self.assertEqual(client.post('/api/v1/jobs',json=dict(body,policy='invalid')).status_code,422)
+            from engine.learning import FEATURE_SCHEMA, signed
+            from engine.storage import write_json_atomic
+            write_json_atomic(self.root/'m4-imports'/'test'/'checkpoint.json',signed(dict(
+                schema_version=1,kind='learned_policy',architecture=[30,32,16,2],feature_schema=FEATURE_SCHEMA,
+                metadata={},layers=[dict(weight=[[0.]*a for _ in range(b)],bias=[0.]*b) for a,b in ((30,32),(32,16),(16,2))]),'model_hash'))
+            learned=client.post('/api/v1/jobs',json=dict(body,policy='learned',restarts=1));self.assertEqual(learned.status_code,202)
+            worker.execute_one()
+            learned_run=client.get('/api/v1/jobs/'+learned.json()['id']+'/result').json()
+            self.assertEqual(learned_run['learned']['inference'],'numpy-fp32')
+            self.assertEqual(learned_run['validation']['metrics']['used_vans'],3)
             self.assertEqual(client.post('/api/v1/jobs',json=body).status_code,202)
             changed=copy.deepcopy(d['data']);changed['stops'][0]['mass_kg']=9999
             self.assertEqual(client.put('/api/v1/drafts/'+d['id'],json=dict(revision=d['revision'],data=changed)).status_code,200)

@@ -21,7 +21,7 @@ Collection-only service, single depot, identical vans, mandatory unsplit stops, 
 | Fuel coefficients and idle policy | M1 | Explicit uncalibrated model with versioned parameters |
 | Objective preferences | M3 | Present time/fuel alternatives; no hidden weights |
 | Compatible runtime versions | M1/M2 | CPython 3.12 and Node 24; resolved dependencies in lockfiles |
-| Ai360 OS, RAM and remote access | M4 batch / M5 LAN | M4 inspection and container GPU update verified; NPU and LAN deployment remain outside scope |
+| Ai360 OS, RAM and remote access | M4 batch / M5 LAN | M4 batch and M5 authenticated HTTPS/WSS LAN service verified in rootless Podman containers; NPU remains excluded |
 | Project license and remote repository | Before publication | Undecided; local repository only |
 
 ## M1 implementation decisions
@@ -80,3 +80,23 @@ NumPy FP32 CPU inference is the primary solve runtime. Ai360 runs detached SSH
 batch workers in a digest-pinned application container, without host changes or
 LAN HTTP service. The NPU is excluded. See [M4 operations](m4-learning.md) for
 actual verification, frozen design, timing and remaining acceptance checks.
+
+## M5 confirmed scope
+
+The user authorized authenticated LAN service deployment on Ai360 (`192.168.178.100:8000`)
+controlled from the main-computer browser client. Non-loopback service binds require
+TLS (`--certfile` and `--keyfile`) and a secret token file (`--token-file`, at least
+32 characters, stored strictly outside the repository). Uvicorn access logs are
+disabled automatically when a token is configured so WebSocket query tokens do not
+appear in logs.
+
+REST requests authenticate via `X-VRP-Token` and WebSocket streams authenticate via
+the `token` query parameter, combined with `TrustedHostMiddleware`, explicit origin
+validation (`--allowed-origin`), and optional client IP filtering (`--allowed-client-ip`).
+The browser client persists the HTTPS endpoint and token in `sessionStorage` for the
+duration of the tab session and supports interactive selection between the classical
+CPU policy and the imported M4 learned policy. On Ai360, three rootless Podman
+containers (`vrp-m5-osrm`, `vrp-m5-service`, `vrp-m5-worker`) run without modifying
+host packages or drivers. Single-instance interactive solving runs on CPU; NPU
+execution remains excluded. See [M5 LAN operations](m5-lan.md) for deployment and
+acceptance evidence.

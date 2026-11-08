@@ -73,15 +73,43 @@ class Worker:
                 manifest=self.registry.get(data['city_id'])
                 if manifest['manifest_hash']!=data['dataset_hash']: raise InputError('installed dataset changed')
                 if self.provider_factory is OSRM:
-                    verify_service(self.registry,manifest)
+                    import os
+                    if manifest['manifest_hash'] not in os.environ.get('VRP_OSRM_EXTERNAL_MANIFEST_HASHES','').split(','):
+                        verify_service(self.registry,manifest)
                 result=prepare_draft(data,manifest,self.provider_factory(cancelled=cancelled),emit,cancelled)
                 emit('prepared',dict(scenario_hash=scenario_hash(result),preparation_s=result['preparation_s']))
                 status='completed'; reason='prepared'; feasibility='unknown'
             else:
                 prepared=self.jobs.result(request['prepared_job_id'])
                 if scenario_hash(prepared)!=request['scenario_hash']: raise Conflict('prepared scenario changed')
-                result=solve(prepared,seed=request['seed'],budget_s=request['budget_s'],
-                    max_evaluations=request['max_evaluations'],restarts=request['restarts'],observe=emit,cancelled=cancelled)
+                policy=request.get('policy') or 'cpu'
+                if policy not in ('cpu','learned'):
+                    raise InputError(f'unsupported policy: {policy!r}')
+                if policy=='learned':
+                    # Locate the most recently imported M4 checkpoint in runs/m4-imports/.
+                    import os
+                    checkpoint_env=os.environ.get('VRP_LEARNED_CHECKPOINT','')
+                    if checkpoint_env:
+                        checkpoint=checkpoint_env
+                    else:
+                        # Walk m4-imports for checkpoint.json files and pick the newest.
+                        candidates=[
+                            *self.jobs.root.glob('m4-imports/*/checkpoint.json'),
+                            *self.jobs.root.parent.glob('m4-imports/*/checkpoint.json'),
+                        ]
+                        if not candidates:
+                            raise InputError(
+                                'learned policy requested but no checkpoint found; '
+                                'set VRP_LEARNED_CHECKPOINT or run "python -m engine remote fetch"')
+                        checkpoint=str(max(candidates,key=lambda p: p.stat().st_mtime))
+                    result=solve(prepared,seed=request['seed'],budget_s=request['budget_s'],
+                        max_evaluations=request['max_evaluations'],restarts=request['restarts'],
+                        observe=emit,cancelled=cancelled,
+                        selection_policy='learned',checkpoint=checkpoint)
+                else:
+                    result=solve(prepared,seed=request['seed'],budget_s=request['budget_s'],
+                        max_evaluations=request['max_evaluations'],restarts=request['restarts'],
+                        observe=emit,cancelled=cancelled)
                 result['run_id']=id
                 status=result['job_status']; reason=result['termination_reason']; feasibility=result['feasibility']
             if cancelled() and status!='cancelled':

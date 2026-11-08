@@ -2,7 +2,7 @@
 
 A reproducible urban fleet-routing research laboratory: determine whether learned search improves solution quality and computation time compared with classical methods, while making the search observable through live visualization and replay.
 
-Status: M1–M3 are implemented. M4 adds supervised move ordering, frozen train/validation/test data, portable CPU inference and detached Ai360 batch execution. Training and the full 336-case held-out Ai360 campaign passed independent audit, verified import and browser acceptance. No measured AI advantage or LAN service deployment is claimed.
+Status: M1–M5 are implemented and verified. M4 training and the full 336-case held-out Ai360 campaign passed independent audit, verified import and browser acceptance. M5 authenticated LAN service is deployed on Ai360, verified over TLS and WSS, and accepted from the main computer. No measured AI advantage is claimed.
 
 ## Scope
 
@@ -24,6 +24,7 @@ Status: M1–M3 are implemented. M4 adds supervised move ordering, frozen train/
 - [M2 local setup, contracts and verification](docs/m2-local.md)
 - [M3 frozen classical comparisons](docs/m3-comparisons.md)
 - [M4 supervised learning and Ai360 batch operations](docs/m4-learning.md)
+- [M5 LAN service operations and acceptance](docs/m5-lan.md)
 - [Project decisions](docs/decisions.md)
 - [Development instructions](AGENTS.md)
 
@@ -91,5 +92,4 @@ it remains `unknown`, not a proof. The standalone M1 CLI does not record replay 
 `engine/` contains contracts, accounting, solver, OSRM preparation/adapter, durable
 queue, worker and HTTP service. `client/` contains the local React application;
 `schemas/` defines scenario v1/v2, experimental run v3 and manifest/report formats; `tests/` and client tests cover domain,
-queue, service, replay and browser acceptance. M3 includes the ordered/shuffled custom policies and an optional OR-Tools time adapter. M4 adds a learned move-ordering policy and SSH batch transport; authenticated LAN
-service deployment remains future work. See [M4 operations](docs/m4-learning.md).
+queue, service, replay and browser acceptance. M3 includes the ordered/shuffled custom policies and an optional OR-Tools time adapter. M4 adds a learned move-ordering policy and SSH batch transport. M5 adds authenticated HTTPS/WSS LAN service deployment on Ai360 and main-computer client control. See [M4 operations](docs/m4-learning.md) and [M5 LAN operations](docs/m5-lan.md).

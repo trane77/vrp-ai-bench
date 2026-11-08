@@ -1,5 +1,6 @@
 """Loopback HTTP/WebSocket facade; computation belongs to engine.worker."""
 import asyncio
+import hmac
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
@@ -41,6 +42,7 @@ class NewJob(Strict):
     budget_s: float=Field(default=10,ge=0,le=3600)
     max_evaluations: int | None=Field(default=None,ge=0)
     restarts: int=Field(default=8,ge=1,le=1000)
+    policy: str | None=None  # "cpu" | "learned" | None (defaults to "cpu")
 
 
 def same_origin(origin,host):
@@ -50,20 +52,34 @@ def same_origin(origin,host):
     except ValueError: return False
 
 
-def create_app(root='runs',data_root='data',client_dir='client/dist'):
+def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,allowed_origins=(),allowed_hosts=None,allowed_client_ips=()):
     app=FastAPI(title='VRP AI local laboratory',version='0.2.0')
     jobs=Jobs(root); registry=CityRegistry(data_root)
     app.state.jobs=jobs; app.state.registry=registry
-    app.add_middleware(TrustedHostMiddleware,allowed_hosts=['127.0.0.1','localhost','[::1]'])
+    app.add_middleware(TrustedHostMiddleware,allowed_hosts=allowed_hosts or ['127.0.0.1','localhost','[::1]'])
+
+    def authorized(value):
+        return token is None or (value is not None and hmac.compare_digest(value,token))
+
+    def origin_allowed(origin,host):
+        return same_origin(origin,host) or origin in allowed_origins
 
     @app.middleware('http')
     async def protect_origin(request:Request,call_next):
+        if allowed_client_ips and (request.client is None or request.client.host not in allowed_client_ips):
+            return JSONResponse(status_code=403,content={'detail':'client address rejected'})
         origin=request.headers.get('origin')
-        if origin and not same_origin(origin,request.headers.get('host','')):
+        if origin and not origin_allowed(origin,request.headers.get('host','')):
             return JSONResponse(status_code=403,content={'detail':'cross-origin request rejected'})
+        if request.method=='OPTIONS' and origin in allowed_origins:
+            return JSONResponse(status_code=204,content=None,headers={'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Content-Type, X-VRP-Token','Access-Control-Allow-Methods':'GET, POST, PUT, OPTIONS'})
+        if token is not None and not authorized(request.headers.get('x-vrp-token')):
+            return JSONResponse(status_code=401,content={'detail':'invalid or missing token'})
         if request.headers.get('content-length','0').isdigit() and int(request.headers.get('content-length','0'))>32*1024*1024:
             return JSONResponse(status_code=413,content={'detail':'request exceeds 32 MiB'})
-        return await call_next(request)
+        response=await call_next(request)
+        if origin in allowed_origins: response.headers['Access-Control-Allow-Origin']=origin
+        return response
 
     @app.exception_handler(InputError)
     async def invalid(request,exc):
@@ -97,11 +113,20 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
     def edit_draft(id:str,body:EditDraft):
         manifest=registry.get(body.data.get('city_id'))
         data=validate_draft(body.data,manifest)
-        data['mode']='edited_demo'
+        existing=jobs.draft(id)['data']
+        def stop_shape(stops):
+            return [(s['id'],s['coordinate'],s['packages'],s['mass_kg'],s['volume_m3']) for s in stops]
+        if data['depot']!=existing['depot'] or stop_shape(data['stops'])!=stop_shape(existing['stops']):
+            data['mode']='edited_demo'
+        elif data['parameters']['vehicle_ids']!=existing['parameters']['vehicle_ids'] or all(
+            s['window_open_s']==0 and s['window_close_s']==28800 for s in data['stops']):
+            data['mode']='witness_demo'
         return jobs.save_draft(data,id,body.revision)
 
     @app.post('/api/v1/jobs',status_code=202)
     def new_job(body:NewJob):
+        if body.policy not in (None,'cpu','learned'):
+            raise InputError('policy must be "cpu", "learned", or omitted')
         draft=jobs.draft(body.draft_id)
         if draft['revision']!=body.revision: raise Conflict('draft revision is stale')
         request=body.model_dump()
@@ -151,13 +176,16 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
 
     @app.websocket('/api/v1/jobs/{id}/stream')
     async def stream(socket:WebSocket,id:str,after:int=0):
-        if after<0 or not same_origin(socket.headers.get('origin',''),socket.headers.get('host','')):
+        if ((allowed_client_ips and (socket.client is None or socket.client.host not in allowed_client_ips))
+            or after<0 or not origin_allowed(socket.headers.get('origin',''),socket.headers.get('host',''))
+            or not authorized(socket.query_params.get('token') if token is not None else None)):
             await socket.close(code=1008); return
         try: job=jobs.get(id)
         except KeyError:
             await socket.close(code=1008); return
         await socket.accept()
         cursor=after
+        last_status=job['status']
         try:
             if job['last_seq']-cursor>500:
                 snapshot=await asyncio.to_thread(jobs.snapshot,id)
@@ -170,6 +198,8 @@ def create_app(root='runs',data_root='data',client_dir='client/dist'):
                 job=await asyncio.to_thread(jobs.get,id)
                 if job['status'] in TERMINAL and cursor>=job['last_seq']:
                     await socket.send_json(dict(type='status',data=job)); break
+                if job['status']!=last_status and job['status'] not in TERMINAL:
+                    await socket.send_json(dict(type='status',data=job)); last_status=job['status']
                 await asyncio.sleep(.2)
         except (WebSocketDisconnect,RuntimeError): pass
         finally:

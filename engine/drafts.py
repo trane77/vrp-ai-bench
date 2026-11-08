@@ -122,19 +122,20 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
         reference_instant='2026-01-01T00:00:00+00:00',timezone='Europe/Rome',depot_id='depot',
         stops=[{k:v for k,v in stop.items() if k!='coordinate'} for stop in d['stops']],legs=legs,
         **d['parameters'])
-    if d['mode']=='witness_demo':
+    if d['mode']=='witness_demo' or all(stop['window_open_s']==0 and stop['window_close_s']==28800 for stop in d['stops']):
         routes=[[] for _ in s['vehicle_ids']]
         for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
         lookup={(leg['source'],leg['target']):leg for leg in legs}
         stops={stop['id']:stop for stop in s['stops']}
+        margin=300 if len(routes)<=2 else 60
         for route in routes:
             now=s['start_s']; previous='depot'
             for id in route:
                 leg=lookup[previous,id]
                 if not leg['reachable']: raise InputError('demo witness contains an unreachable leg')
                 now+=leg['travel_s']; stop=stops[id]
-                stop['window_open_s']=max(s['start_s'],now-300)
-                stop['window_close_s']=now+300
+                stop['window_open_s']=max(s['start_s'],now-margin)
+                stop['window_close_s']=now+margin
                 service=s['service']
                 now+=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
                 previous=id
@@ -149,6 +150,6 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
 def draft_from_scenario(scenario):
     locations={point['id']:point for point in scenario['locations']}
     return dict(schema_version=1,city_id=scenario['dataset']['city_id'],
-        dataset_hash=scenario['dataset']['manifest_hash'],seed=scenario['generation']['seed'],mode='edited_demo',
+        dataset_hash=scenario['dataset']['manifest_hash'],seed=scenario['generation']['seed'],mode=scenario['generation']['mode'],
         depot=locations['depot']['requested'],stops=[dict(**stop,coordinate=locations[stop['id']]['requested']) for stop in scenario['stops']],
         parameters={key:copy.deepcopy(scenario[key]) for key in PARAMETER_KEYS})

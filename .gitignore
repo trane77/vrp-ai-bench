@@ -22,7 +22,10 @@ playwright-report/
 .env.*
 !.env.example
 *.pem
+*.crt
 *.key
+*.token
+/config/
 
 # Generated research artifacts (keep small explicit fixtures under tests/)
 /data/

@@ -1367,3 +1367,7 @@ footer > span {
 .case-status.failed { color: #ff9a9a; }
 .case-status.cancelled { color: #f7b862; }
 .case-status.completed { color: #3cdbb7; }
+.connection-settings { display:flex; gap:12px; align-items:center; padding:10px 24px; background:#101a2a; flex-wrap:wrap; }
+.connection-settings label { display:flex; gap:8px; align-items:center; color:#b9c8da; font-size:12px; }
+.connection-settings input { background:#17243a; color:#f1f6fb; border:1px solid #40536c; border-radius:5px; padding:6px 8px; min-width:180px; }
+.connection-settings button { background:#286383; color:white; border:0; border-radius:5px; padding:7px 12px; cursor:pointer; }

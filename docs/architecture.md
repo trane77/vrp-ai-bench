@@ -17,7 +17,7 @@ This is an architectural selection, not a verified dependency matrix. Pin compat
 M1 implements the standard-library Python domain, independent validator and CPU
 heuristic. M2 adds FastAPI, a separately launched worker, SQLite/event journals,
 local OSRM preparation and the React/MapLibre/deck.gl client. M3 adds an optional OR-Tools adapter and isolated sequential experiment cases. M4 adds PyTorch training, portable NumPy FP32 inference and detached Ai360 batch
-workers; authenticated LAN service deployment remains planned. See [M3 comparisons](m3-comparisons.md). See [M2 operations](m2-local.md) for current
+workers. M5 adds authenticated HTTPS/WSS LAN service deployment on Ai360 and browser endpoint/token configuration. See [M2 operations](m2-local.md), [M3 comparisons](m3-comparisons.md), [M4 operations](m4-learning.md) and [M5 LAN operations](m5-lan.md) for current
 contracts, job recovery, timing exclusions and limitations.
 
 ## Boundaries
@@ -51,12 +51,11 @@ Start with SQLite metadata and compressed append-only event files; serialize wri
 
 Initially the browser and engine run on the development computer, with the service bound to loopback. Later the same client connects to the engine on Ai360; configuration selects the endpoint.
 
-Ai360 was inspected for M4: Fedora 44, Ryzen AI 9 HX 370, 24 logical CPUs, about
-28 GiB RAM, Radeon 890M/gfx1150, ROCm 7.1.1 and SSH access. A pinned Ubuntu
+Ai360 was inspected for M4 and deployed for M5: Fedora 44, Ryzen AI 9 HX 370, 24 logical CPUs, about
+28 GiB RAM, Radeon 890M/gfx1150, ROCm 7.1.1 and SSH/LAN access. A pinned Ubuntu
 application container supplies Python 3.12/PyTorch; native Podman GPU forward,
-backward and Adam weight updates passed. This establishes the inspected batch
-path, not general Fedora support or NPU compatibility. No host configuration
-changes or LAN HTTP exposure are included. See [M4 operations](m4-learning.md).
+backward and Adam weight updates passed for M4 training, while single-instance solving uses CPU.
+For M5, rootless Podman containers run OSRM, the TLS-enabled FastAPI service and the durable worker on Ai360 without host driver or system-package changes. NPU execution remains excluded. See [M4 operations](m4-learning.md) and [M5 LAN operations](m5-lan.md).
 
 CPU execution is required. Acceleration is optional and selected only after compatibility and end-to-end benchmarks. Keep native library thread counts and worker counts explicit to prevent oversubscription. Start with one benchmark job at a time.
 

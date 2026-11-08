@@ -1,0 +1,13 @@
+[Unit]
+Description=VRP AI durable worker
+
+[Service]
+Type=simple
+WorkingDirectory=/PATH/TO/vrp-ai
+ExecStart=/PATH/TO/vrp-ai/.venv/bin/python -m engine worker
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

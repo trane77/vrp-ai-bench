@@ -101,8 +101,18 @@ class Jobs:
 
     def cancel(self,id):
         self.get(id)
+        now=time.time()
         with self.connection() as db:
-            db.execute("UPDATE jobs SET cancel=1,updated=? WHERE id=? AND status IN ('queued','running')",(time.time(),id))
+            # Queued jobs have no worker: transition immediately to cancelled so the client
+            # does not wait indefinitely for a worker that may not be running.
+            db.execute(
+                "UPDATE jobs SET status='cancelled',termination_reason='cancelled',"
+                "cancel=1,updated=? WHERE id=? AND status='queued'",
+                (now,id))
+            # Running jobs: set the flag; the worker will honour it on the next check.
+            db.execute(
+                "UPDATE jobs SET cancel=1,updated=? WHERE id=? AND status='running'",
+                (now,id))
         return self.get(id)
 
     def result(self,id):

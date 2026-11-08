@@ -1,6 +1,6 @@
 # Roadmap
 
-M0 documentation, the M1 CLI baseline and the M2 local city laboratory are implemented. M3 comparison tooling is implemented; M4 training and the full held-out campaign, audit, import and browser acceptance are verified. M5 LAN deployment remains planned. Full pilot acceptance is recorded in the M3 operations document.
+M0–M4 are implemented and verified. M5 LAN service deployment on Ai360, reconnection, persistence and main-computer acceptance are verified. Full pilot acceptance is recorded in the M3 operations document.
 
 ## M0 — Requirements and repository
 
@@ -63,9 +63,12 @@ Acceptance: reproducible evaluation supports a scoped positive, neutral or negat
 
 ## M5 — Ai360 engine deployment
 
-- Inspect host OS, RAM, access, dependencies and supported runtimes.
-- Deploy authenticated LAN service; test reconnection and persistence.
-- Benchmark CPU first; evaluate GPU/NPU only where compatible and useful.
+- [x] Inspect host OS, RAM, access, dependencies and supported runtimes for M4 batch execution.
+- [x] Prepare authenticated LAN service, browser configuration and local tests.
+- [x] Deploy on Ai360; test main-computer reconnection and persistence.
+- [x] Benchmark CPU first; evaluate GPU/NPU only where compatible and useful.
+
+Verification and acceptance evidence: [M5 LAN operations](m5-lan.md).
 
 Acceptance: the main computer controls and replays an Ai360 run, client disconnection does not stop computation, hardware and timing provenance are recorded. This deployment can be moved earlier if required; acceleration remains optional.
 

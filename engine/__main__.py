@@ -40,11 +40,17 @@ def main(argv=None):
     worker.add_argument('--data-root', default='data')
     worker.add_argument('--once', action='store_true')
     worker.add_argument('--stop', action='store_true', help='stop after the current job; keep queued jobs')
-    serve = commands.add_parser('serve', help='loopback HTTP and compiled client')
+    serve = commands.add_parser('serve', help='HTTP service; LAN requires TLS and token')
     serve.add_argument('--root', default='runs')
     serve.add_argument('--data-root', default='data')
-    serve.add_argument('--host', choices=['127.0.0.1','localhost','::1'], default='127.0.0.1')
+    serve.add_argument('--host', default='127.0.0.1')
     serve.add_argument('--port', type=int, default=8000)
+    serve.add_argument('--certfile')
+    serve.add_argument('--keyfile')
+    serve.add_argument('--token-file')
+    serve.add_argument('--allowed-origin', action='append', default=[])
+    serve.add_argument('--server-name', help='DNS name used by the browser and certificate')
+    serve.add_argument('--allowed-client-ip', action='append', default=[])
     experiment = commands.add_parser('experiment', help='frozen classical pilot')
     experiment.add_argument('action', choices=['freeze','run','status','report'])
     experiment.add_argument('inputs', nargs='*')
@@ -115,9 +121,29 @@ def main(argv=None):
             else: worker.run()
             return 0
         if args.command == 'serve':
+            from pathlib import Path
             import uvicorn
             from .service import create_app
-            uvicorn.run(create_app(args.root,args.data_root),host=args.host,port=args.port)
+            lan=args.host not in ('127.0.0.1','localhost','::1')
+            if bool(args.certfile)!=bool(args.keyfile) or (lan and not (args.certfile and args.token_file)):
+                raise InputError('LAN bind requires certfile, keyfile and token-file; TLS needs both certificate and key')
+            from urllib.parse import urlparse
+            def valid_origin(origin):
+                parsed=urlparse(origin)
+                return (parsed.scheme=='https' or (parsed.scheme=='http' and parsed.hostname in ('127.0.0.1','localhost','::1'))) and bool(parsed.netloc) and not parsed.path and not parsed.query and not parsed.fragment
+            if any(not valid_origin(origin) for origin in args.allowed_origin):
+                raise InputError('allowed origins must be HTTPS or loopback HTTP origins without paths')
+            token=None
+            if args.token_file:
+                path=Path(args.token_file).resolve()
+                if path.is_relative_to(Path(__file__).resolve().parent.parent):
+                    raise InputError('token file must be outside the repository')
+                token=path.read_text().strip()
+                if len(token)<32: raise InputError('token must contain at least 32 characters')
+            uvicorn.run(create_app(args.root,args.data_root,token=token,allowed_origins=args.allowed_origin,
+                                   allowed_hosts=[args.host,*([args.server_name] if args.server_name else [])],
+                                   allowed_client_ips=args.allowed_client_ip),host=args.host,port=args.port,
+                        ssl_certfile=args.certfile,ssl_keyfile=args.keyfile,access_log=not bool(token))
             return 0
         load_started = time.monotonic()
         startup_s = load_started - _STARTUP
