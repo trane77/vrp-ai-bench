@@ -592,7 +592,13 @@ function App() {
   }
   function stopField(
     key:
-      "window_open_s" | "window_close_s" | "packages" | "mass_kg" | "volume_m3",
+      | "window_open_s"
+      | "window_close_s"
+      | "packages"
+      | "mass_kg"
+      | "volume_m3"
+      | "delivery_mass_kg"
+      | "delivery_volume_m3",
     value: number,
   ) {
     edit((d) => {
@@ -656,7 +662,7 @@ function App() {
             VRP<span>AI</span>
             <span className="brand-divider" />
             <small>{it.app}</small>
-            <span className="version">M6 / CPU+M4+R&amp;D</span>
+            <span className="version">M7 / CPU+M4+R&amp;D</span>
           </div>
           <div className="header-status">
             <span className="local-pill">
@@ -977,6 +983,59 @@ function App() {
                         })
                       }
                     />
+                    <div className="section-line" style={{ marginTop: 8 }}>
+                      <span>PERCORSI E VINCOLI (M7)</span>
+                    </div>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(f.path_optimization)}
+                        onChange={(e) =>
+                          params("path_optimization", e.target.checked)
+                        }
+                      />
+                      Ottimizza percorsi alternativi OSRM (M7)
+                    </label>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(f.driver_break?.enabled)}
+                        onChange={(e) =>
+                          params("driver_break", {
+                            enabled: e.target.checked,
+                            threshold_s: f.driver_break?.threshold_s ?? 14400,
+                            duration_s: f.driver_break?.duration_s ?? 900,
+                          })
+                        }
+                      />
+                      Pausa conducente obbligatoria (M7)
+                    </label>
+                    {f.driver_break?.enabled && (
+                      <div className="fields">
+                        <Field
+                          label="Soglia guida/serv. (s)"
+                          value={f.driver_break.threshold_s}
+                          min={60}
+                          onChange={(n) =>
+                            params("driver_break", {
+                              ...f.driver_break!,
+                              threshold_s: Math.max(60, n),
+                            })
+                          }
+                        />
+                        <Field
+                          label="Durata pausa (s)"
+                          value={f.driver_break.duration_s}
+                          min={0}
+                          onChange={(n) =>
+                            params("driver_break", {
+                              ...f.driver_break!,
+                              duration_s: Math.max(0, Math.floor(n)),
+                            })
+                          }
+                        />
+                      </div>
+                    )}
                   </details>
                 </fieldset>
               )}
@@ -1469,6 +1528,12 @@ function App() {
                           onChange={(n) => stopField("volume_m3", n)}
                         />
                       </div>
+                      <Field
+                        label="Consegna da deposito (kg, M7)"
+                        value={selectedStop.delivery_mass_kg ?? 0}
+                        step={0.1}
+                        onChange={(n) => stopField("delivery_mass_kg", n)}
+                      />
                       <button
                         className="danger full"
                         onClick={() => {

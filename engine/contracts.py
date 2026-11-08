@@ -38,15 +38,25 @@ def enum(*values):
 
 
 SEGMENT = obj(distance_m=NUM, driving_category=TEXT)
+PATH_ALTERNATIVE = obj(id=TEXT, travel_s=INT, distance_m=NUM,
+                       segments=array(SEGMENT))
+PATH_ALTERNATIVE["properties"]["geometry"] = array(array({"type": "number"}, minItems=2, maxItems=2))
+PATH_ALTERNATIVE["properties"]["raw_duration_s"] = NUM
 LEG = obj(source=TEXT, target=TEXT, reachable=BOOL, travel_s=INT,
           segments=array(SEGMENT))
+LEG["properties"]["alternatives"] = array(PATH_ALTERNATIVE)
 STOP = obj(id=TEXT, window_open_s=INT, window_close_s=INT,
            packages=INT, mass_kg=NUM, volume_m3=NUM)
+STOP["properties"]["delivery_mass_kg"] = NUM
+STOP["properties"]["delivery_volume_m3"] = NUM
+DRIVER_BREAK = obj(enabled=BOOL, threshold_s=POS, duration_s=INT)
+VEHICLE_CAPACITIES = {"type": "object",
+                      "additionalProperties": obj(mass_kg=POS, volume_m3=POS)}
 SCENARIO = obj(
     schema_version=VERSION, id=TEXT,
     provenance=obj(kind=enum("synthetic"), description=TEXT,
                    dataset_id=TEXT, dataset_version=TEXT,
-                   path_policy=enum("fixed_directed_paths")),
+                   path_policy=enum("fixed_directed_paths", "osrm_alternatives_evaluated")),
     reference_instant=TEXT, timezone=TEXT, start_s=INT, depot_id=TEXT,
     vehicle_ids=array(TEXT, minItems=1, maxItems=5, uniqueItems=True),
     capacity=obj(mass_kg=POS, volume_m3=POS),
@@ -65,7 +75,11 @@ SCENARIO = obj(
                    idle_l_per_s=NUM),
     objective=obj(time_weight=NUM, fuel_weight=NUM,
                   time_scale_s=POS, fuel_scale_l=POS))
+SCENARIO["properties"]["path_optimization"] = BOOL
+SCENARIO["properties"]["vehicle_capacities"] = VEHICLE_CAPACITIES
+SCENARIO["properties"]["driver_break"] = DRIVER_BREAK
 ROUTE = obj(vehicle_id=TEXT, stop_ids=array(TEXT))
+ROUTE["properties"]["path_ids"] = array(TEXT)
 # Solutions are route proposals. Reports are always recomputed, never trusted.
 SOLUTION = obj(schema_version=VERSION, scenario_id=TEXT, routes=array(ROUTE))
 METRICS = obj(fleet_elapsed_s=INT, completion_s=INT, travel_s=INT,
@@ -73,8 +87,10 @@ METRICS = obj(fleet_elapsed_s=INT, completion_s=INT, travel_s=INT,
               estimated_fuel_l=NUM, used_vans=INT, available_vans=INT)
 VISIT = obj(stop_id=TEXT, arrival_s=INT, service_start_s=INT, departure_s=INT,
             load_kg=NUM, load_m3=NUM)
+VISIT["properties"]["break_s"] = INT
 LEG_REPORT = obj(source=TEXT, target=TEXT, travel_s=INT, distance_m=NUM,
                  load_kg=NUM, load_m3=NUM, estimated_fuel_l=NUM)
+LEG_REPORT["properties"]["path_id"] = TEXT
 VEHICLE_REPORT = obj(vehicle_id=TEXT, stop_ids=array(TEXT), return_s=INT,
                      visits=array(VISIT), legs=array(LEG_REPORT), metrics=METRICS)
 REPORT = obj(feasible=BOOL, violations=array(TEXT), metrics=METRICS,
@@ -173,6 +189,9 @@ def validate_scenario(data):
     for s in data["stops"]:
         if s["window_close_s"] < s["window_open_s"]:
             raise InputError(f"stop {s['id']}: reversed time window")
+    if data.get("vehicle_capacities"):
+        if not set(data["vehicle_capacities"]) <= set(data["vehicle_ids"]):
+            raise InputError("vehicle_capacities references an unknown vehicle_id")
     nodes = set(ids) | {data["depot_id"]}
     pairs = set()
     for leg in data["legs"]:
@@ -180,13 +199,23 @@ def validate_scenario(data):
         if not set(pair) <= nodes or pair[0] == pair[1] or pair in pairs:
             raise InputError(f"invalid/duplicate directed leg {pair}")
         pairs.add(pair)
-        if not leg["reachable"] and (leg["travel_s"] != 0 or leg["segments"]):
+        if not leg["reachable"] and (leg["travel_s"] != 0 or leg["segments"] or leg.get("alternatives")):
             raise InputError(f"unreachable leg {pair}: use zero travel and empty segments")
         if leg["reachable"] and not leg["segments"]:
             raise InputError(f"reachable leg {pair}: segments required")
         for segment in leg["segments"]:
             if segment["driving_category"] not in data["fuel_model"]["categories"]:
                 raise InputError(f"leg {pair}: missing fuel category")
+        if leg.get("alternatives"):
+            alt_ids = [alt["id"] for alt in leg["alternatives"]]
+            if len(set(alt_ids)) != len(alt_ids):
+                raise InputError(f"leg {pair}: duplicate alternative IDs")
+            for alt in leg["alternatives"]:
+                if not alt["segments"]:
+                    raise InputError(f"leg {pair}: alternative {alt['id']} requires segments")
+                for segment in alt["segments"]:
+                    if segment["driving_category"] not in data["fuel_model"]["categories"]:
+                        raise InputError(f"leg {pair}: alternative {alt['id']} missing fuel category")
     if pairs != {(a, b) for a in nodes for b in nodes if a != b}:
         raise InputError("complete directed leg data required; mark unreachable pairs explicitly")
     objective = data["objective"]

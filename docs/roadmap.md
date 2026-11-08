@@ -83,9 +83,9 @@ Acceptance: independent Monte Carlo evaluation matches deterministic accounting 
 
 ## M7 — Alternative road paths and operational constraints
 
-- [ ] Extract multiple directed road path alternatives per origin-destination leg from OSRM (e.g., fastest vs. shortest/lower-fuel paths) under an explicit path-policy contract.
-- [ ] Extend the independent validator, neighborhood operators and learned feature schema to jointly select stop order and leg path alternatives along the time/fuel trade-off front.
-- [ ] Add optional operational constraints (heterogeneous fleet capacities, mandatory driver breaks or mixed pickup/delivery loads) with independent validation and backward-compatible scenario schemas.
+- [x] Extract multiple directed road path alternatives per origin-destination leg from OSRM (e.g., fastest vs. shortest/lower-fuel paths) under an explicit path-policy contract.
+- [x] Extend the independent validator, neighborhood operators and learned feature schema to jointly select stop order and leg path alternatives along the time/fuel trade-off front.
+- [x] Add optional operational constraints (heterogeneous fleet capacities, mandatory driver breaks or mixed pickup/delivery loads) with independent validation and backward-compatible scenario schemas.
 
 Acceptance: the independent validator verifies path-selection and operational constraints; controlled experiments quantify whether multi-path routing expands the nondominated time/fuel Pareto front compared with fixed single-path routing.
 

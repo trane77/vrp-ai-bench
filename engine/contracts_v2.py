@@ -17,18 +17,23 @@ SCENARIO_V2['properties'].update(
     schema_version={'type': 'integer', 'const': 2},
     provenance=obj(kind=enum('osm_roads_synthetic_appointments'), description=TEXT,
                    dataset_id=TEXT, dataset_version=TEXT,
-                   path_policy=enum('fixed_directed_paths')),
+                   path_policy=enum('fixed_directed_paths', 'osrm_alternatives_evaluated')),
     dataset=DATASET, locations=array(LOCATION),
     generation=obj(seed={'type': 'integer'}, mode=enum('witness_demo', 'edited_demo'),
                    rejected_samples=INT, witness_routes=array(array(TEXT))),
     preparation_s=NUM)
-SCENARIO_V2['required'] = list(SCENARIO_V2['properties'])
+OPTIONAL_SCENARIO_KEYS = {'path_optimization', 'vehicle_capacities', 'driver_break'}
+SCENARIO_V2['required'] = [k for k in SCENARIO_V2['properties'] if k not in OPTIONAL_SCENARIO_KEYS]
 SCENARIO_V2['properties']['stops']['maxItems'] = 100
 leg = SCENARIO_V2['properties']['legs']['items']
 leg['properties'].update(geometry=array(COORD), raw_duration_s=NUM,
                          annotations=obj(distance_m=array(NUM), duration_s=array(NUM)),
                          dataset_hash=TEXT)
-leg['required'] = list(leg['properties'])
+leg['properties']['alternatives']['items']['properties'].update(
+    geometry=array(COORD),
+    raw_duration_s=NUM,
+)
+leg['required'] = [k for k in leg['properties'] if k != 'alternatives']
 RUN_V2 = copy.deepcopy(RUN)
 RUN_V2['properties'].update(schema_version={'type':'integer','const':2}, scenario=SCENARIO_V2,
     job_status=enum('completed','cancelled'),
@@ -48,14 +53,22 @@ def coordinate(value):
 
 
 def validate_road_scenario(data):
-    from .contracts import validate_scenario
+    from .contracts import validate_scenario, PATH_ALTERNATIVE
     check(data, SCENARIO_V2)
     # Reuse all v1 domain invariants without weakening the v1 interchange contract.
-    base = {key: copy.deepcopy(data[key]) for key in SCENARIO['properties']}
+    base = {key: copy.deepcopy(data[key]) for key in SCENARIO['properties'] if key in data}
     base['schema_version'] = 1
     base['provenance']['kind'] = 'synthetic'
-    base['legs'] = [{k:v for k,v in leg.items() if k in SCENARIO['properties']['legs']['items']['properties']}
-                    for leg in base['legs']]
+    base_legs = []
+    for leg in base['legs']:
+        item = {k: v for k, v in leg.items() if k in SCENARIO['properties']['legs']['items']['properties']}
+        if 'alternatives' in item:
+            item['alternatives'] = [
+                {ak: av for ak, av in alt.items() if ak in PATH_ALTERNATIVE['properties']}
+                for alt in item['alternatives']
+            ]
+        base_legs.append(item)
+    base['legs'] = base_legs
     validate_scenario(base)
     dataset = data['dataset']
     if (data['provenance']['dataset_id'] != dataset['city_id'] or

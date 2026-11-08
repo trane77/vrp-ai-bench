@@ -8,7 +8,7 @@ import math
 import random
 
 from .contracts import InputError, validate_scenario
-from .validation import validate_solution
+from .validation import select_leg_path, validate_solution
 
 
 def _quantile(sorted_values, q):
@@ -104,22 +104,33 @@ def evaluate_stochastic(scenario, solution, *, seed=42, samples=100, travel_cv=0
                 continue
 
             now = float(s['start_s'])
-            mass = 0.0
+            mass = sum(float(stops[sid].get('delivery_mass_kg', 0.0)) for sid in stop_ids)
+            work_since_break_s = 0.0
+            brk = s.get('driver_break')
+            brk_enabled = bool(brk and brk.get('enabled'))
+            explicit_pids = route.get('path_ids')
             previous = s['depot_id']
 
-            for target in stop_ids + [s['depot_id']]:
+            for leg_idx, target in enumerate(stop_ids + [s['depot_id']]):
                 leg = legs[previous, target]
+                win_close = stops[target]['window_close_s'] if target != s['depot_id'] else None
+                exp_pid = (explicit_pids[leg_idx]
+                           if explicit_pids is not None and leg_idx < len(explicit_pids)
+                           else None)
+                _, base_travel_s, segments, _ = select_leg_path(
+                    s, leg, mass, now, window_close_s=win_close, explicit_path_id=exp_pid)
                 t_factor = _multiplier(rng, float(travel_cv))
-                travel_s = leg['travel_s'] * t_factor
+                travel_s = base_travel_s * t_factor
 
                 fuel = 0.0
-                for segment in leg['segments']:
+                for segment in segments:
                     coef = s['fuel_model']['categories'][segment['driving_category']]
                     fuel += segment['distance_m'] / 1000.0 * (
                         coef['base_l_per_km'] + coef['load_l_per_km_kg'] * mass
                     )
                 sample_fuel += fuel
                 now += travel_s
+                work_since_break_s += travel_s
 
                 if target != s['depot_id']:
                     stop = stops[target]
@@ -150,7 +161,13 @@ def evaluate_stochastic(scenario, solution, *, seed=42, samples=100, travel_cv=0
                         sample_fuel += (wait_s + service_s) * s['fuel_model']['idle_l_per_s']
 
                     now = start + service_s
-                    mass += float(stop['mass_kg'])
+                    work_since_break_s += service_s
+                    if brk_enabled and work_since_break_s >= float(brk['threshold_s']):
+                        brk_s = float(brk['duration_s'])
+                        now += brk_s
+                        sample_waiting += brk_s
+                        work_since_break_s = 0.0
+                    mass = mass - float(stop.get('delivery_mass_kg', 0.0)) + float(stop['mass_kg'])
 
                 previous = target
 

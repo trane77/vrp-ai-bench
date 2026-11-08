@@ -127,7 +127,7 @@ Chromium checks passed, including the real-city acceptance flow. The software-We
 playback p95 was about 100 ms; the provisional 50 ms target remains unmet and is
 recorded as a prototype limitation, not hidden by the functional test result.
 
-### M3–M5 implementation notes
+### M3–M7 implementation notes
 
 - **M3**: Ordered/shuffled classical variants, optional OR-Tools elapsed-time adapter,
   frozen 102-case pilot (84 main + 18 recording controls), anytime curves, found
@@ -151,3 +151,11 @@ recorded as a prototype limitation, not hidden by the functional test result.
   interactive R&D laboratory panel (`client/src/RnDView.tsx`) wired to the sidebar
   `R&D` button; and Vite Rollup manual chunk splitting for `maplibre-gl` and
   `@deck.gl`.
+- **M7**: OSRM multi-path extraction (`?alternatives=3`) with deduplicated candidate
+  road paths per leg (`leg['alternatives']`) under `osrm_alternatives_evaluated`;
+  independent validator and solver support for explicit (`route['path_ids']`) and
+  objective-aware (`path_optimization=True`) leg path selection respecting
+  destination time windows; backward-compatible operational constraints
+  (`vehicle_capacities`, `driver_break`, and stop `delivery_mass_kg` /
+  `delivery_volume_m3`); and R&D single-path vs multi-path comparison endpoint
+  (`POST /api/v1/rnd/path-comparison`) and UI controls.

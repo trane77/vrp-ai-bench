@@ -26,6 +26,13 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "path_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "required": [

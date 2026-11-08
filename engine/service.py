@@ -62,6 +62,14 @@ class NewScaleCampaign(BaseModel):
     weights: list[float]=Field(default_factory=lambda: [1.0,0.5,0.0])
     repetitions: int=Field(default=1,ge=1,le=2)
 
+class PathComparisonRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    prepared_job_id: str
+    solve_job_id: str | None=None
+    seed: int=42
+    budget_s: float=Field(default=2.0,ge=0.2,le=30.0)
+    max_evaluations: int=Field(default=400,ge=50,le=5000)
+
 
 def same_origin(origin,host):
     try:
@@ -133,7 +141,8 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         data=validate_draft(body.data,manifest)
         existing=jobs.draft(id)['data']
         def stop_demands(stops):
-            return [(s['id'],s['packages'],s['mass_kg'],s['volume_m3']) for s in stops]
+            return [(s['id'],s['packages'],s['mass_kg'],s['volume_m3'],
+                     s.get('delivery_mass_kg',0),s.get('delivery_volume_m3',0)) for s in stops]
         if data['depot']!=existing['depot'] or stop_demands(data['stops'])!=stop_demands(existing['stops']):
             data['mode']='edited_demo'
         elif data['parameters']['vehicle_ids']!=existing['parameters']['vehicle_ids']:
@@ -288,6 +297,74 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
             checkpoint_model=ckpt_model,
         )
         return public_job(jobs.submit('experiment',dict(manifest=manifest)))
+
+    @app.post('/api/v1/rnd/path-comparison')
+    def rnd_path_comparison(body:PathComparisonRequest):
+        import copy
+        from .solver import solve
+        from .validation import objective_score, validate_solution
+        prep=jobs.get(body.prepared_job_id)
+        if prep['kind']!='prepare' or prep['status']!='completed':
+            raise Conflict('prepared scenario job is not completed')
+        base_scenario=copy.deepcopy(jobs.result(body.prepared_job_id))
+        total_legs=len(base_scenario.get('legs',[]))
+        legs_with_alts=sum(1 for leg in base_scenario.get('legs',[]) if len(leg.get('alternatives') or [])>1)
+        rows=[]
+        for tw in (1.0,0.5,0.0):
+            fw=round(1.0-tw,4)
+            pair={}
+            for mode_key,opt_flag in (('single_path',False),('multi_path',True)):
+                scen=copy.deepcopy(base_scenario)
+                scen['objective']['time_weight']=tw
+                scen['objective']['fuel_weight']=fw
+                scen['path_optimization']=opt_flag
+                scen['provenance']['path_policy']='osrm_alternatives_evaluated' if opt_flag else 'fixed_directed_paths'
+                run=solve(scen,seed=body.seed,budget_s=body.budget_s,max_evaluations=body.max_evaluations,restarts=2)
+                val=run.get('validation')
+                if val and val['feasible']:
+                    m=val['metrics']
+                    alt_switches=sum(
+                        1 for v in val['vehicles'] for l in v['legs']
+                        if l.get('path_id') not in (None,'default','alt-0')
+                    )
+                    pair[mode_key]=dict(
+                        feasible=True,
+                        objective_score=round(objective_score(scen,val),6),
+                        fleet_elapsed_s=m['fleet_elapsed_s'],
+                        travel_s=m['travel_s'],
+                        distance_m=round(m['distance_m'],1),
+                        estimated_fuel_l=round(m['estimated_fuel_l'],4),
+                        used_vans=m['used_vans'],
+                        alt_paths_selected=alt_switches,
+                    )
+                else:
+                    pair[mode_key]=dict(feasible=False,objective_score=None,fleet_elapsed_s=None,
+                                        travel_s=None,distance_m=None,estimated_fuel_l=None,
+                                        used_vans=0,alt_paths_selected=0)
+            sp,mp=pair['single_path'],pair['multi_path']
+            delta_score=(round(mp['objective_score']-sp['objective_score'],6)
+                         if sp['feasible'] and mp['feasible'] else None)
+            delta_time_s=(mp['travel_s']-sp['travel_s']
+                          if sp['feasible'] and mp['feasible'] else None)
+            delta_fuel_l=(round(mp['estimated_fuel_l']-sp['estimated_fuel_l'],4)
+                          if sp['feasible'] and mp['feasible'] else None)
+            rows.append(dict(
+                time_weight=tw,
+                fuel_weight=fw,
+                single_path=sp,
+                multi_path=mp,
+                delta=dict(objective_score=delta_score,travel_s=delta_time_s,estimated_fuel_l=delta_fuel_l),
+            ))
+        return dict(
+            schema_version=1,
+            scenario_id=base_scenario['id'],
+            city_id=base_scenario['dataset']['city_id'],
+            stop_count=len(base_scenario['stops']),
+            total_legs=total_legs,
+            legs_with_alternatives=legs_with_alts,
+            fuel_label=f"{base_scenario['fuel_model']['label']} (uncalibrated)",
+            comparisons=rows,
+        )
 
     @app.get('/api/v1/jobs/{id}/events')
     def events(id:str,after:int=0):

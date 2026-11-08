@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FlaskConical, ShieldAlert, Cpu, Play, CheckCircle2, AlertTriangle } from "lucide-react";
+import { FlaskConical, ShieldAlert, Cpu, Play, CheckCircle2, AlertTriangle, GitBranch } from "lucide-react";
 import { request } from "./connection";
 
 type SummaryStats = {
@@ -78,6 +78,38 @@ type LearnedModelInfo = {
   source_id: string;
 };
 
+type PathModeMetrics = {
+  feasible: boolean;
+  objective_score: number | null;
+  fleet_elapsed_s: number | null;
+  travel_s: number | null;
+  distance_m: number | null;
+  estimated_fuel_l: number | null;
+  used_vans: number;
+  alt_paths_selected: number;
+};
+
+type PathComparisonReport = {
+  schema_version: number;
+  scenario_id: string;
+  city_id: string;
+  stop_count: number;
+  total_legs: number;
+  legs_with_alternatives: number;
+  fuel_label: string;
+  comparisons: {
+    time_weight: number;
+    fuel_weight: number;
+    single_path: PathModeMetrics;
+    multi_path: PathModeMetrics;
+    delta: {
+      objective_score: number | null;
+      travel_s: number | null;
+      estimated_fuel_l: number | null;
+    };
+  }[];
+};
+
 const fmtNum = (n: number, digits = 1) =>
   n.toLocaleString("it-IT", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 
@@ -99,7 +131,9 @@ export default function RnDView({
   defaultVehicles: number;
   defaultServiceMode: "constant" | "packages";
 }) {
-  const [tab, setTab] = useState<"stochastic" | "campaigns" | "models">("stochastic");
+  const [tab, setTab] = useState<"stochastic" | "campaigns" | "models" | "paths">("stochastic");
+  const [pathReport, setPathReport] = useState<PathComparisonReport | null>(null);
+  const [pathBusy, setPathBusy] = useState(false);
   const [samples, setSamples] = useState(100);
   const [travelCvText, setTravelCvText] = useState("0,15");
   const [serviceCvText, setServiceCvText] = useState("0,20");
@@ -213,18 +247,38 @@ export default function RnDView({
     }
   }
 
+  async function runPathComparison() {
+    if (!preparedJobId) return;
+    setPathBusy(true);
+    setError("");
+    try {
+      const resp = await request("/api/v1/rnd/path-comparison", "POST", {
+        prepared_job_id: preparedJobId,
+        solve_job_id: solveJobId,
+        seed: stochSeed,
+        budget_s: 2.0,
+        max_evaluations: 400,
+      });
+      setPathReport(await resp.json());
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setPathBusy(false);
+    }
+  }
+
   return (
     <section className="rnd-section" id="rnd-lab" aria-label="Laboratorio R&D">
       <div className="rnd-header">
         <div>
           <div className="eyebrow">
-            RESEARCH &amp; DEVELOPMENT <span>/ M6</span>
+            RESEARCH &amp; DEVELOPMENT <span>/ M6–M7</span>
           </div>
           <h2>
-            <FlaskConical size={20} /> Laboratorio R&amp;D: Robustezza Stocastica, Scala 20–100 e Modelli
+            <FlaskConical size={20} /> Laboratorio R&amp;D: Robustezza, Scala 20–100, Percorsi Alternativi e Modelli
           </h2>
           <p>
-            Valutazione indipendente Monte Carlo su tempi di viaggio/servizio perturbati, ispezione dei modelli
+            Valutazione indipendente Monte Carlo, confronto multi-percorso OSRM (M7), ispezione dei modelli
             appresi (v1/v2) e lancio di campagne multi-scala su Ai360.
           </p>
         </div>
@@ -236,6 +290,14 @@ export default function RnDView({
             onClick={() => setTab("stochastic")}
           >
             <ShieldAlert size={14} /> Robustezza Stocastica
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "paths"}
+            className={tab === "paths" ? "chosen" : ""}
+            onClick={() => setTab("paths")}
+          >
+            <GitBranch size={14} /> Percorsi &amp; Vincoli (M7)
           </button>
           <button
             role="tab"
@@ -581,6 +643,110 @@ export default function RnDView({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "paths" && (
+        <div className="rnd-card">
+          <div className="rnd-controls">
+            <div className="rnd-summary-pill">
+              Città: <strong>{city.toUpperCase()}</strong> · Fermate: <strong>{stopCount}</strong>
+            </div>
+            <button
+              className="primary"
+              disabled={!preparedJobId || pathBusy}
+              onClick={runPathComparison}
+            >
+              <GitBranch size={14} />
+              {pathBusy ? "Confronto multi-percorso…" : "Confronta Percorso Singolo vs Alternativi OSRM"}
+            </button>
+          </div>
+          {!preparedJobId && (
+            <p className="helper">
+              Prepara prima i percorsi stradali nello Scenario per eseguire il confronto tra percorso singolo e
+              percorsi alternativi OSRM (M7).
+            </p>
+          )}
+          {pathReport && (
+            <div className="rnd-results">
+              <div className="rnd-kpis">
+                <div className="rnd-kpi">
+                  <span>Tratte dirette totali</span>
+                  <strong>{pathReport.total_legs}</strong>
+                  <small>{pathReport.city_id}</small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>Tratte con alternative OSRM</span>
+                  <strong>{pathReport.legs_with_alternatives}</strong>
+                  <small>
+                    {fmtNum(
+                      (100 * pathReport.legs_with_alternatives) / Math.max(1, pathReport.total_legs),
+                      1,
+                    )}
+                    % della matrice
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>Modello carburante</span>
+                  <strong style={{ fontSize: "1rem" }}>Linear-Load v1</strong>
+                  <small>{pathReport.fuel_label}</small>
+                </div>
+              </div>
+              <div className="comparison-table">
+                <h4>Confronto Single-Path vs Multi-Path OSRM al variare dei pesi obiettivo</h4>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Pesi (Tempo / Carb.)</th>
+                      <th>Score (Singolo → Multi)</th>
+                      <th>Guida s (Singolo → Multi)</th>
+                      <th>Distanza km (Singolo → Multi)</th>
+                      <th>Carburante L (Singolo → Multi)</th>
+                      <th>Alternative scelte</th>
+                      <th>Δ Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pathReport.comparisons.map((row) => (
+                      <tr key={row.time_weight}>
+                        <td>
+                          <strong>
+                            {fmtNum(row.time_weight, 1)} / {fmtNum(row.fuel_weight, 1)}
+                          </strong>
+                        </td>
+                        <td>
+                          {row.single_path.objective_score !== null && row.multi_path.objective_score !== null
+                            ? `${fmtNum(row.single_path.objective_score, 4)} → ${fmtNum(row.multi_path.objective_score, 4)}`
+                            : "—"}
+                        </td>
+                        <td>
+                          {row.single_path.travel_s !== null && row.multi_path.travel_s !== null
+                            ? `${row.single_path.travel_s}s → ${row.multi_path.travel_s}s`
+                            : "—"}
+                        </td>
+                        <td>
+                          {row.single_path.distance_m !== null && row.multi_path.distance_m !== null
+                            ? `${fmtNum(row.single_path.distance_m / 1000, 2)} → ${fmtNum(row.multi_path.distance_m / 1000, 2)}`
+                            : "—"}
+                        </td>
+                        <td>
+                          {row.single_path.estimated_fuel_l !== null && row.multi_path.estimated_fuel_l !== null
+                            ? `${fmtNum(row.single_path.estimated_fuel_l, 3)} → ${fmtNum(row.multi_path.estimated_fuel_l, 3)}`
+                            : "—"}
+                        </td>
+                        <td>{row.multi_path.alt_paths_selected}</td>
+                        <td>
+                          {row.delta.objective_score !== null
+                            ? `${row.delta.objective_score <= 0 ? "" : "+"}${fmtNum(row.delta.objective_score, 4)}`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

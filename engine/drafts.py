@@ -13,13 +13,17 @@ from .solver import proposal
 from .validation import validate_solution
 
 PARAMETER_KEYS = ['start_s','vehicle_ids','capacity','duration_cap_s','service','fuel_model','objective']
+OPTIONAL_PARAMETER_KEYS = ['path_optimization','vehicle_capacities','driver_break']
 DRAFT_STOP=copy.deepcopy(STOP)
 DRAFT_STOP['properties']['coordinate']=COORD
 DRAFT_STOP['required'].append('coordinate')
+DRAFT_PARAMS=obj(**{key:SCENARIO['properties'][key] for key in PARAMETER_KEYS})
+for _k in OPTIONAL_PARAMETER_KEYS:
+    DRAFT_PARAMS['properties'][_k]=SCENARIO['properties'][_k]
 DRAFT = obj(schema_version={'type':'integer','const':1}, city_id=enum(*PRESETS), dataset_hash=TEXT,
     seed={'type':'integer'}, mode=enum('witness_demo','edited_demo'), depot=COORD,
     stops=array(DRAFT_STOP,maxItems=100),
-    parameters=obj(**{key:SCENARIO['properties'][key] for key in PARAMETER_KEYS}))
+    parameters=DRAFT_PARAMS)
 
 
 def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',duration_cap_s=None):
@@ -118,9 +122,10 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
             progress('metric',dict(phase='paths',done=len(legs),total=total))
     dataset={key:manifest[key] for key in ['city_id','version','manifest_hash','source_sha256','source_url',
         'osm_timestamp','osrm_image','profile_sha256','license','attribution','path_policy']}
+    path_policy='osrm_alternatives_evaluated' if d['parameters'].get('path_optimization') else 'fixed_directed_paths'
     s=dict(schema_version=2,id=str(uuid.uuid4()),provenance=dict(kind='osm_roads_synthetic_appointments',
         description='Synthetic demo appointments on real OSM roads; witness construction bias disclosed',
-        dataset_id=d['city_id'],dataset_version=manifest['version'],path_policy='fixed_directed_paths'),
+        dataset_id=d['city_id'],dataset_version=manifest['version'],path_policy=path_policy),
         dataset=dataset,locations=locations,generation=dict(seed=d['seed'],mode=d['mode'],
         rejected_samples=rejected,witness_routes=[]),preparation_s=0,
         reference_instant='2026-01-01T00:00:00+00:00',timezone='Europe/Rome',depot_id='depot',
@@ -131,16 +136,21 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
         for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
         lookup={(leg['source'],leg['target']):leg for leg in legs}
         stops={stop['id']:stop for stop in s['stops']}
+        brk=s.get('driver_break')
+        brk_enabled=bool(brk and brk.get('enabled'))
         for route in routes:
-            now=s['start_s']; previous='depot'
+            now=s['start_s']; previous='depot'; work_s=0
             for id in route:
                 leg=lookup[previous,id]
                 if not leg['reachable']: raise InputError('demo witness contains an unreachable leg')
-                now+=leg['travel_s']; stop=stops[id]
+                now+=leg['travel_s']; work_s+=leg['travel_s']; stop=stops[id]
                 stop['window_open_s']=max(s['start_s'],now-300)
                 stop['window_close_s']=now+300
                 service=s['service']
-                now+=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
+                dur=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
+                now+=dur; work_s+=dur
+                if brk_enabled and work_s>=brk['threshold_s']:
+                    now+=int(brk['duration_s']); work_s=0
                 previous=id
         s['generation']['witness_routes']=routes
         report=validate_solution(validate_scenario(s),proposal(s,routes))
@@ -152,7 +162,11 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
 
 def draft_from_scenario(scenario):
     locations={point['id']:point for point in scenario['locations']}
+    params={key:copy.deepcopy(scenario[key]) for key in PARAMETER_KEYS}
+    for key in OPTIONAL_PARAMETER_KEYS:
+        if key in scenario:
+            params[key]=copy.deepcopy(scenario[key])
     return dict(schema_version=1,city_id=scenario['dataset']['city_id'],
         dataset_hash=scenario['dataset']['manifest_hash'],seed=scenario['generation']['seed'],mode=scenario['generation']['mode'],
         depot=locations['depot']['requested'],stops=[dict(**stop,coordinate=locations[stop['id']]['requested']) for stop in scenario['stops']],
-        parameters={key:copy.deepcopy(scenario[key]) for key in PARAMETER_KEYS})
+        parameters=params)

@@ -195,6 +195,11 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
     search_s = clock() - search_started
     solution = proposal(s, best) if best is not None else None
     validation = validate_solution(s, solution) if solution is not None else None
+    if solution is not None and validation is not None and s.get('path_optimization'):
+        for r, v_rep in zip(solution['routes'], validation['vehicles']):
+            if v_rep['legs'] and all('path_id' in l for l in v_rep['legs']):
+                r['path_ids'] = [l['path_id'] for l in v_rep['legs']]
+        validation = validate_solution(s, solution)
     if validation is not None and not validation['feasible']:
         raise RuntimeError('incumbent failed final independent validation')
     result = dict(schema_version=s['schema_version'], run_id=str(uuid.uuid4()), scenario_hash=digest,

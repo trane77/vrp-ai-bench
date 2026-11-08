@@ -7,12 +7,22 @@ export interface Stop {
   packages: number;
   mass_kg: number;
   volume_m3: number;
+  delivery_mass_kg?: number;
+  delivery_volume_m3?: number;
+}
+export interface DriverBreak {
+  enabled: boolean;
+  threshold_s: number;
+  duration_s: number;
 }
 export interface Parameters {
   start_s: number;
   vehicle_ids: string[];
   capacity: { mass_kg: number; volume_m3: number };
   duration_cap_s: number | null;
+  path_optimization?: boolean;
+  driver_break?: DriverBreak;
+  vehicle_capacities?: Record<string, { mass_kg: number; volume_m3: number }>;
   service: {
     mode: "constant" | "packages";
     constant_s: number;
@@ -67,6 +77,7 @@ export interface Metrics {
 export interface Tour {
   vehicle_id: string;
   stop_ids: string[];
+  path_ids?: string[];
 }
 export interface Solution {
   schema_version: number;
@@ -80,6 +91,7 @@ export interface Visit {
   departure_s: number;
   load_kg: number;
   load_m3: number;
+  break_s?: number;
 }
 export interface Vehicle {
   vehicle_id: string;
@@ -94,6 +106,7 @@ export interface Vehicle {
     distance_m: number;
     load_kg: number;
     estimated_fuel_l: number;
+    path_id?: string;
   }[];
 }
 export interface Validation {
@@ -103,12 +116,19 @@ export interface Validation {
   vehicles: Vehicle[];
   fuel_label: string;
 }
+export interface PathAlternative {
+  id: string;
+  travel_s: number;
+  distance_m: number;
+  geometry?: Coord[];
+}
 export interface Leg {
   source: string;
   target: string;
   reachable: boolean;
   geometry: Coord[];
   travel_s: number;
+  alternatives?: PathAlternative[];
 }
 export interface Scenario extends Parameters {
   id: string;

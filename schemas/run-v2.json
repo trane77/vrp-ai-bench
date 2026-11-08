@@ -47,7 +47,8 @@
             },
             "path_policy": {
               "enum": [
-                "fixed_directed_paths"
+                "fixed_directed_paths",
+                "osrm_alternatives_evaluated"
               ]
             }
           },
@@ -143,6 +144,14 @@
               "volume_m3": {
                 "type": "number",
                 "minimum": 0
+              },
+              "delivery_mass_kg": {
+                "type": "number",
+                "minimum": 0
+              },
+              "delivery_volume_m3": {
+                "type": "number",
+                "minimum": 0
               }
             },
             "required": [
@@ -194,6 +203,69 @@
                   "required": [
                     "distance_m",
                     "driving_category"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "alternatives": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "travel_s": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "distance_m": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "segments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "distance_m": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "driving_category": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "distance_m",
+                          "driving_category"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "geometry": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    },
+                    "raw_duration_s": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "travel_s",
+                    "distance_m",
+                    "segments"
                   ],
                   "additionalProperties": false
                 }
@@ -380,6 +452,52 @@
             "fuel_weight",
             "time_scale_s",
             "fuel_scale_l"
+          ],
+          "additionalProperties": false
+        },
+        "path_optimization": {
+          "type": "boolean"
+        },
+        "vehicle_capacities": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "mass_kg": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "volume_m3": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "mass_kg",
+              "volume_m3"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "driver_break": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "threshold_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "duration_s": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "enabled",
+            "threshold_s",
+            "duration_s"
           ],
           "additionalProperties": false
         },
@@ -751,6 +869,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "path_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -889,6 +1014,10 @@
                         "load_m3": {
                           "type": "number",
                           "minimum": 0
+                        },
+                        "break_s": {
+                          "type": "integer",
+                          "minimum": 0
                         }
                       },
                       "required": [
@@ -934,6 +1063,10 @@
                         "estimated_fuel_l": {
                           "type": "number",
                           "minimum": 0
+                        },
+                        "path_id": {
+                          "type": "string",
+                          "minLength": 1
                         }
                       },
                       "required": [
