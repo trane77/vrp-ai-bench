@@ -27,7 +27,7 @@ def main():
             sample = load_json(dest_file)
             if sample.get('feature_schema') == FEATURE_SCHEMA_V4 and sample.get('groups') and len(sample['groups'][0]['rows'][0]['features']) == 48:
                 sample = signed(sample, 'samples_hash')
-                write_json_atomic(dest_file, sample)
+                write_json_atomic(dest_file, sample, overwrite=True)
                 entries.append(dict(path=e['path'], samples_hash=sample['samples_hash'],
                                     status=sample['status'], groups=len(sample['groups'])))
                 if (idx + 1) % 20 == 0 or idx + 1 == len(src_coll['entries']):
@@ -48,7 +48,7 @@ def main():
         sample['groups'] = new_groups
         sample = signed(sample, 'samples_hash')
         
-        write_json_atomic(dest_file, sample)
+        write_json_atomic(dest_file, sample, overwrite=True)
         entries.append(dict(path=e['path'], samples_hash=sample['samples_hash'], 
                             status=sample['status'], groups=len(sample['groups'])))
         if (idx + 1) % 20 == 0 or idx + 1 == len(src_coll['entries']):
@@ -65,7 +65,7 @@ def main():
     ), 'collection_hash')
     
     coll_file = v4_samples_dir / 'collection.json'
-    write_json_atomic(coll_file, v4_coll)
+    write_json_atomic(coll_file, v4_coll, overwrite=True)
     print(f"Saved v4 collection to {coll_file} (collection_hash: {v4_coll['collection_hash']})")
     
     # Verify GPU probe
