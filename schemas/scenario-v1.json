@@ -70,7 +70,7 @@
         "minLength": 1
       },
       "minItems": 1,
-      "maxItems": 5,
+      "maxItems": 50,
       "uniqueItems": true
     },
     "capacity": {

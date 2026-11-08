@@ -39,12 +39,18 @@ FEATURES_V3 = FEATURES_V2 + [
 ]
 FEATURE_SCHEMA_V3 = dict(version=3, names=FEATURES_V3, normalization='stop-count-capacity-scenario-scales-v3')
 
+FEATURES_V4 = FEATURES_V3 + [
+    'routes_centroid_dist_norm',
+    'routes_bbox_overlap_ratio',
+]
+FEATURE_SCHEMA_V4 = dict(version=4, names=FEATURES_V4, normalization='scale-invariant-bologna-v4')
+
 
 class Features:
     def __init__(self, scenario, routes, validation, version=1):
         if not validation['feasible']:
             raise InputError('features require a validated current solution')
-        if version not in (1, 2, 3):
+        if version not in (1, 2, 3, 4):
             raise InputError('unsupported feature schema version')
         self.version = version
         self.s, self.routes, self.report = scenario, routes, validation
@@ -62,7 +68,7 @@ class Features:
         self.route_volume = [sum(self.stops[v]['volume_m3'] for v in route) for route in routes]
         self.route_arcs = [self._single_route_arc_cost(route) for route in routes]
         self.current_arcs = self.arc_cost(routes)
-        if version == 3:
+        if version in (3, 4):
             veh_caps = scenario.get('vehicle_capacities') or {}
             self.capacities = [veh_caps.get(vid, scenario['capacity']) for vid in scenario['vehicle_ids']]
             self.route_delivery_mass = [sum(self.stops[v].get('delivery_mass_kg', 0) for v in route) for route in routes]
@@ -90,6 +96,11 @@ class Features:
                 self.route_break_urgency = urgencies
             else:
                 self.route_break_urgency = [0.0] * len(routes)
+        if version == 4:
+            from .moves import compute_route_geometry
+            locs = {loc['id']: loc for loc in scenario.get('locations', [])}
+            depot_loc = locs.get(scenario['depot_id'], {}).get('snapped', [11.3426, 44.4949])
+            self.route_centroids, self.route_bboxes = compute_route_geometry(routes, locs, depot_loc)
 
     def _single_route_arc_cost(self, route):
         if not route:
@@ -156,7 +167,7 @@ class Features:
             dt = (new_t - old_t) / ts
             df = (new_f - old_f) / fs
         x += [dt, df]
-        if self.version in (2, 3):
+        if self.version in (2, 3, 4):
             cap_s = s['duration_cap_s']
             src_dur = self.report['vehicles'][move.a]['metrics']['fleet_elapsed_s']
             dst_dur = self.report['vehicles'][move.b]['metrics']['fleet_elapsed_s']
@@ -166,9 +177,11 @@ class Features:
             loaded_fuel_delta = df * (1. + moved_mass / max(1., float(capacity['mass_kg'])))
             urgency_a = (first_stop['window_close_s'] - s['start_s']) / ts if first_stop is not None else 0.
             urgency_b = (second_stop['window_close_s'] - s['start_s']) / ts if second_stop is not None else urgency_a
+            stop_count_norm = (math.log1p(len(s['stops'])) / math.log1p(2000.)) if self.version == 4 else (len(s['stops']) / 100.)
+            fleet_size_norm = (math.log1p(len(s['vehicle_ids'])) / math.log1p(100.)) if self.version == 4 else (len(s['vehicle_ids']) / 5.)
             x += [
-                len(s['stops']) / 100.,
-                len(s['vehicle_ids']) / 5.,
+                stop_count_norm,
+                fleet_size_norm,
                 1. if s['service']['mode'] == 'packages' else 0.,
                 1. if cap_s is not None else 0.,
                 src_cap_util,
@@ -176,7 +189,7 @@ class Features:
                 loaded_fuel_delta,
                 urgency_b - urgency_a,
             ]
-        if self.version == 3:
+        if self.version in (3, 4):
             cap_a = self.capacities[move.a] if move.a < len(self.capacities) else s['capacity']
             cap_b = self.capacities[move.b] if move.b < len(self.capacities) else s['capacity']
             src_deliv_ratio = self.route_delivery_mass[move.a] / max(1.0, float(cap_a.get('mass_kg', 1.0)))
@@ -222,7 +235,24 @@ class Features:
                 is_calibrated,
                 traffic_ratio,
             ]
-        expected_len = 30 if self.version == 1 else (38 if self.version == 2 else 46)
+        if self.version == 4:
+            ca = self.route_centroids[move.a]
+            cb = self.route_centroids[move.b]
+            deg_dist = math.hypot(ca[0] - cb[0], ca[1] - cb[1])
+            centroid_dist_norm = min(1.0, deg_dist / 0.25)
+
+            ba = self.route_bboxes[move.a]
+            bb = self.route_bboxes[move.b]
+            inter_w = max(0.0, min(ba[2], bb[2]) - max(ba[0], bb[0]))
+            inter_h = max(0.0, min(ba[3], bb[3]) - max(ba[1], bb[1]))
+            inter_area = inter_w * inter_h
+            area_a = max(1e-9, (ba[2] - ba[0]) * (ba[3] - ba[1]))
+            area_b = max(1e-9, (bb[2] - bb[0]) * (bb[3] - bb[1]))
+            union_area = area_a + area_b - inter_area
+            bbox_overlap_ratio = min(1.0, max(0.0, inter_area / union_area)) if union_area > 0 else 0.0
+
+            x += [centroid_dist_norm, bbox_overlap_ratio]
+        expected_len = 30 if self.version == 1 else (38 if self.version == 2 else (46 if self.version == 3 else 48))
         if len(x) != expected_len or not all(math.isfinite(v) for v in x):
             raise InputError('nonfinite or incompatible feature vector')
         return x
@@ -260,6 +290,12 @@ class Policy:
             expected_shapes = ((46, 64), (64, 32), (32, 2))
             self.feature_version = 3
             self.input_dim = 46
+        elif schema_ver == 4:
+            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA_V4 or model.get('architecture') != [48,64,32,2]:
+                raise InputError('incompatible learned v4 checkpoint')
+            expected_shapes = ((48, 64), (64, 32), (32, 2))
+            self.feature_version = 4
+            self.input_dim = 48
         else:
             raise InputError('incompatible learned checkpoint')
         self.model = model

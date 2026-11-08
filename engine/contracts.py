@@ -63,7 +63,7 @@ SCENARIO = obj(
                    dataset_id=TEXT, dataset_version=TEXT,
                    path_policy=enum("fixed_directed_paths", "osrm_alternatives_evaluated")),
     reference_instant=TEXT, timezone=TEXT, start_s=INT, depot_id=TEXT,
-    vehicle_ids=array(TEXT, minItems=1, maxItems=5, uniqueItems=True),
+    vehicle_ids=array(TEXT, minItems=1, maxItems=50, uniqueItems=True),
     capacity=obj(mass_kg=POS, volume_m3=POS),
     duration_cap_s={"anyOf": [INT, NULL]},
     stops=array(STOP), legs=array(LEG),

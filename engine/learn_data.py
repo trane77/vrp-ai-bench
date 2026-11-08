@@ -7,7 +7,7 @@ import time
 
 from .contracts import InputError, load_json, validate_scenario
 from .drafts import make_draft, prepare_draft
-from .learning import Features, FEATURE_SCHEMA, FEATURE_SCHEMA_V2, FEATURE_SCHEMA_V3, signed, verify_hash
+from .learning import Features, FEATURE_SCHEMA, FEATURE_SCHEMA_V2, FEATURE_SCHEMA_V3, FEATURE_SCHEMA_V4, signed, verify_hash
 from .moves import enumerate_moves
 from .solver import proposal, scenario_hash, solve
 from .storage import write_json_atomic
@@ -110,8 +110,14 @@ def label_state(s, solution, cancelled=lambda:False, version=1):
     if not report['feasible']: raise InputError('cannot label an invalid current state')
     routes = [r['stop_ids'] for r in solution['routes']]
     features = Features(s, routes, report, version=version); current = objective_score(s, report)
+    spatial_neighbors = None
+    if version == 4 and len(s['vehicle_ids']) > 5:
+        from .moves import get_spatial_neighbor_routes
+        locs = {loc['id']: loc for loc in s.get('locations', [])}
+        depot_loc = locs.get(s['depot_id'], {}).get('snapped', [11.3426, 44.4949])
+        spatial_neighbors = get_spatial_neighbor_routes(routes, locs, depot_loc, max_neighbors=4)
     rows = []
-    for index, move in enumerate(enumerate_moves(routes)):
+    for index, move in enumerate(enumerate_moves(routes, spatial_neighbors=spatial_neighbors)):
         if cancelled(): raise RuntimeError('labeling cancelled or phase deadline')
         x = features.row(move)  # Deliberately computed before independent candidate validation.
         result = validate_solution(s, proposal(s, move.apply(routes)))
@@ -129,7 +135,7 @@ def collect_trajectory(task):
     stopped=lambda: time.monotonic()>=deadline or Path(cancel_path).exists()
     started = time.monotonic(); states = []
     s = copy.deepcopy(s); s['objective'].update(time_weight=weight, fuel_weight=1-weight)
-    schema_map = {1: FEATURE_SCHEMA, 2: FEATURE_SCHEMA_V2, 3: FEATURE_SCHEMA_V3}
+    schema_map = {1: FEATURE_SCHEMA, 2: FEATURE_SCHEMA_V2, 3: FEATURE_SCHEMA_V3, 4: FEATURE_SCHEMA_V4}
     schema = schema_map.get(version, FEATURE_SCHEMA)
     def observe(kind,payload,elapsed):
         if kind == 'feasible_best' and len(states) < 3: states.append(copy.deepcopy(payload['solution']))

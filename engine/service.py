@@ -27,7 +27,7 @@ class NewExperiment(Strict):
 class NewDraft(Strict):
     city_id: str
     seed: int=42
-    count: int=Field(default=20,ge=1,le=100)
+    count: int=Field(default=20,ge=1,le=1500)
 
 class EditDraft(Strict):
     revision: str
@@ -54,7 +54,7 @@ class StochasticRequest(BaseModel):
 class NewScaleCampaign(BaseModel):
     model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
     prepared_job_id: str
-    vehicles: int | None=Field(default=None,ge=1,le=5)
+    vehicles: int | None=Field(default=None,ge=1,le=50)
     service_mode: str | None=None
     duration_cap_s: float | None=None
     methods: list[str]=Field(default_factory=lambda: ['ordered','shuffled','learned'])

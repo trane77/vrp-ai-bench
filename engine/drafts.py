@@ -22,22 +22,23 @@ for _k in OPTIONAL_PARAMETER_KEYS:
     DRAFT_PARAMS['properties'][_k]=SCENARIO['properties'][_k]
 DRAFT = obj(schema_version={'type':'integer','const':1}, city_id=enum(*PRESETS), dataset_hash=TEXT,
     seed={'type':'integer'}, mode=enum('witness_demo','edited_demo'), depot=COORD,
-    stops=array(DRAFT_STOP,maxItems=100),
+    stops=array(DRAFT_STOP,maxItems=2000),
     parameters=DRAFT_PARAMS)
 
 
 def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',duration_cap_s=None):
-    if type(seed)!=int or type(count)!=int or not 1<=count<=100:
-        raise InputError('seed must be an integer; stop count must be 1–100')
-    if type(vehicles)!=int or not 1<=vehicles<=5:
-        raise InputError('vehicles must be an integer between 1 and 5')
+    if type(seed)!=int or type(count)!=int or not 1<=count<=1500:
+        raise InputError('seed must be an integer; stop count must be 1–1500')
+    if type(vehicles)!=int or not 1<=vehicles<=50:
+        raise InputError('vehicles must be an integer between 1 and 50')
     if service_mode not in ('constant','packages'):
         raise InputError('service_mode must be constant or packages')
     rng=random.Random(seed)
     center=manifest['center']
     stops=[]
+    max_radius = 1500 if count <= 100 else (3500 if count <= 400 else 7500)
     for i in range(count):
-        angle=rng.random()*2*math.pi; radius=math.sqrt(rng.random())*1500
+        angle=rng.random()*2*math.pi; radius=math.sqrt(rng.random())*max_radius
         point=[center[0]+math.cos(angle)*radius/(111320*math.cos(math.radians(center[1]))),
                center[1]+math.sin(angle)*radius/111320]
         packages=rng.randint(1,5)

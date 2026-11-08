@@ -40,10 +40,10 @@ def proposal(s, routes):
         dict(vehicle_id=v, stop_ids=list(route)) for v, route in zip(s['vehicle_ids'], routes)])
 
 
-def neighbor_moves(routes):
+def neighbor_moves(routes, spatial_neighbors=None):
     """Stable order: relocation, swap, then within-route reversal."""
     from .moves import enumerate_moves
-    for move in enumerate_moves(routes):
+    for move in enumerate_moves(routes, spatial_neighbors=spatial_neighbors):
         yield move.apply(routes), move.operator
 
 
@@ -163,15 +163,22 @@ def solve(data, *, seed=0, budget_s=1.0, max_evaluations=None, restarts=8,
             remember(routes, report)
             current_score = objective_score(s, report)
             current_report = report
+            locs = {loc['id']: loc for loc in s.get('locations', [])}
+            depot_loc = locs.get(s['depot_id'], {}).get('snapped', [11.3426, 44.4949])
+            use_spatial = len(s['vehicle_ids']) > 5
             while True:
                 improved = False
-                moves = neighbor_moves(routes)
+                spatial_neighbors = None
+                if use_spatial:
+                    from .moves import get_spatial_neighbor_routes
+                    spatial_neighbors = get_spatial_neighbor_routes(routes, locs, depot_loc, max_neighbors=4)
+                moves = neighbor_moves(routes, spatial_neighbors=spatial_neighbors)
                 if selection_policy == "shuffled":
                     moves = list(moves)
                     selection_rng.shuffle(moves)
                 if policy is not None:
                     from .moves import enumerate_moves
-                    descriptors = list(enumerate_moves(routes))
+                    descriptors = list(enumerate_moves(routes, spatial_neighbors=spatial_neighbors))
                     descriptors = policy.order(s, routes, current_report, descriptors)
                     moves = ((move.apply(routes), move.operator) for move in descriptors)
                 for candidate, move_type in moves:
