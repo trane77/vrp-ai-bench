@@ -135,6 +135,7 @@ export interface Scenario extends Parameters {
   generation: { mode: string; seed: number; rejected_samples: number };
 }
 export interface Run {
+  run_id?: string;
   scenario: Scenario;
   solution: Solution | null;
   validation: Validation | null;

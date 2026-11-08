@@ -4,19 +4,24 @@ import time
 from pathlib import Path
 
 from .contracts import InputError, load_json
-from .learning import FEATURE_SCHEMA, Policy, signed, verify_hash
+from .learning import FEATURE_SCHEMA, FEATURE_SCHEMA_V2, Policy, signed, verify_hash
 from .storage import write_json_atomic
 
 
-def export_model(network, metadata):
+def export_model(network, metadata, version=1):
     layers = [dict(weight=layer.weight.detach().cpu().tolist(), bias=layer.bias.detach().cpu().tolist())
               for layer in network if hasattr(layer,'weight')]
-    return signed(dict(schema_version=1,kind='learned_policy',architecture=[30,32,16,2],
-                       feature_schema=FEATURE_SCHEMA,layers=layers,metadata=metadata), 'model_hash')
+    arch = [30,32,16,2] if version == 1 else [38,64,32,2]
+    schema = FEATURE_SCHEMA if version == 1 else FEATURE_SCHEMA_V2
+    return signed(dict(schema_version=version,kind='learned_policy',architecture=arch,
+                       feature_schema=schema,layers=layers,metadata=metadata), 'model_hash')
 
 
-def make_network():
+def make_network(version=1):
     import torch
+    if version == 2:
+        return torch.nn.Sequential(torch.nn.Linear(38,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
+                                   torch.nn.ReLU(),torch.nn.Linear(32,2))
     return torch.nn.Sequential(torch.nn.Linear(30,32),torch.nn.ReLU(),torch.nn.Linear(32,16),
                                torch.nn.ReLU(),torch.nn.Linear(16,2))
 

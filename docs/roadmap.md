@@ -1,6 +1,6 @@
 # Roadmap
 
-M0–M4 are implemented and verified. M5 LAN service deployment on Ai360, reconnection, persistence and main-computer acceptance are verified. Full pilot acceptance is recorded in the M3 operations document.
+M0–M6 are implemented and verified. M5 LAN service deployment on Ai360, reconnection, persistence and main-computer acceptance are verified. M6 adds scale-ladder campaigns (20/50/100 stops, 1–5 vans, constant/packages service), Feature/Policy v2 (`38→64→32→2`), Monte Carlo stochastic robustness evaluation, the interactive R&D laboratory in the client, and map bundle code-splitting. Full pilot acceptance is recorded in the M3 operations document.
 
 ## M0 — Requirements and repository
 
@@ -72,6 +72,13 @@ Verification and acceptance evidence: [M5 LAN operations](m5-lan.md).
 
 Acceptance: the main computer controls and replays an Ai360 run, client disconnection does not stop computation, hardware and timing provenance are recorded. This deployment can be moved earlier if required; acceleration remains optional.
 
+## M6 — Scale ladder, learned policy v2, stochastic robustness and R&D lab
+
+- [x] Extend scenario generation and learned policy to Feature Schema v2 (38 features, `38→64→32→2`) across 20, 50 and 100 stops, 1–5 vans and both service modes while preserving M4 v1 checkpoint compatibility.
+- [x] Implement an independent Monte Carlo stochastic robustness evaluator (`engine/stochastic.py`) over travel-time and service-duration perturbations.
+- [x] Activate the client R&D navigation and laboratory view (`client/src/RnDView.tsx`) for stochastic stress-testing, model inspection and multi-scale campaign launching on Ai360.
+- [x] Split `maplibre-gl` and `@deck.gl` into separate vendor chunks in the client production build.
+
 ## Later
 
-Stochastic service times, traffic simulation, calibrated fuel validation, alternative road paths, additional operational constraints and desktop packaging.
+Traffic microsimulation, calibrated fuel validation, alternative road paths, additional operational constraints and desktop packaging.

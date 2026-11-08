@@ -75,10 +75,120 @@ def freeze(scenarios):
     return manifest
 
 
+def freeze_scale_campaign(scenarios, *, methods=('ordered', 'shuffled', 'learned'), budgets=(5, 15), weights=(1, 0.5, 0), repetitions=1, checkpoint_model=None):
+    if not scenarios:
+        raise InputError('at least one scenario is required')
+    valid_methods = ('ordered', 'shuffled', 'learned')
+    if not methods or any(m not in valid_methods for m in methods):
+        raise InputError('methods must be a subset of ordered, shuffled, learned')
+    if 'learned' in methods and checkpoint_model is None:
+        raise InputError('learned method requires a verified checkpoint model')
+    if not budgets or any(b not in (5, 15) for b in budgets):
+        raise InputError('budgets must be chosen from (5, 15)')
+    if not weights or any(w not in (1, 0.5, 0) for w in weights):
+        raise InputError('weights must be chosen from (1, 0.5, 0)')
+    if type(repetitions) is not int or not (1 <= repetitions <= 2):
+        raise InputError('repetitions must be 1 or 2')
+
+    instances = []
+    seen_ids = set()
+    for data in scenarios:
+        s = validate_scenario(data)
+        if s['schema_version'] != 2:
+            raise InputError('scale campaign requires road-backed v2 scenarios')
+        witness = proposal(s, s['generation']['witness_routes'])
+        rep = validate_solution(s, witness)
+        if not rep['feasible']:
+            raise InputError('scenario witness is not feasible')
+        m = rep['metrics']
+        inst_id = f"{s['dataset']['city_id']}-{len(s['stops'])}s-{len(s['vehicle_ids'])}v-{s['generation']['seed']}"
+        if inst_id in seen_ids:
+            raise InputError(f'duplicate instance id: {inst_id}')
+        seen_ids.add(inst_id)
+        s_copy = copy.deepcopy(s)
+        s_copy['id'] = inst_id
+        witness = proposal(s_copy, s_copy['generation']['witness_routes'])
+        rep = validate_solution(s_copy, witness)
+        instances.append(dict(
+            id=inst_id,
+            scenario=s_copy,
+            scenario_hash=scenario_hash(s_copy),
+            reference=dict(solution=witness, validation=rep, proof_status='not_certified'),
+            scales=copy.deepcopy(s_copy['objective']),
+            hypervolume_reference=[max(1, 2 * m['fleet_elapsed_s']), max(1, 2 * m['estimated_fuel_l'])],
+        ))
+
+    cases = []
+    for instance in instances:
+        for budget in budgets:
+            for rep_idx in range(repetitions):
+                for method in methods:
+                    for weight in weights:
+                        cases.append(dict(
+                            instance=instance['id'],
+                            method=method,
+                            budget_s=budget,
+                            repetition=rep_idx,
+                            seed=rep_idx,
+                            time_weight=weight,
+                            recording=True,
+                            control=False,
+                        ))
+    random.Random(42).shuffle(cases)
+    for index, case in enumerate(cases):
+        case['id'] = f'case-{index:03d}'
+
+    training_meta = {}
+    checkpoint_hash = None
+    if checkpoint_model is not None:
+        from .learning import Policy
+        Policy(checkpoint_model)
+        checkpoint_hash = checkpoint_model['model_hash']
+        training_meta = {k: v for k, v in checkpoint_model.get('metadata', {}).items() if k not in ('history',)}
+
+    manifest = dict(
+        schema_version=3,
+        kind='experiment_manifest',
+        design='m6-scale-ladder',
+        planning_seed=42,
+        main_cases=len(cases),
+        control_cases=0,
+        instances=instances,
+        cases=cases,
+        checkpoint=checkpoint_model,
+        checkpoint_hash=checkpoint_hash,
+        training=training_meta,
+        provenance=provenance(),
+        front_budget_multiplier=len(weights),
+        scope='Descriptive M6 scale-ladder campaign across configurable stop counts, fleet sizes and service modes; no city-level generalization',
+    )
+    manifest['manifest_hash'] = scenario_hash(manifest)
+    return manifest
+
+
 def validate_manifest(manifest):
     if manifest.get('schema_version') == 2:
         from .learn_evaluate import validate_manifest_v2
         return validate_manifest_v2(manifest)
+    if manifest.get('schema_version') == 3:
+        expected = manifest.get('manifest_hash')
+        unsigned = {k: v for k, v in manifest.items() if k != 'manifest_hash'}
+        if expected != scenario_hash(unsigned):
+            raise InputError('manifest hash mismatch')
+        if manifest.get('kind') != 'experiment_manifest' or manifest.get('design') != 'm6-scale-ladder':
+            raise InputError('invalid M6 scale-ladder manifest design')
+        if not manifest.get('instances') or not manifest.get('cases'):
+            raise InputError('M6 manifest requires non-empty instances and cases')
+        if any(c.get('method') == 'learned' for c in manifest['cases']) and not manifest.get('checkpoint'):
+            raise InputError('learned cases in M6 manifest require an embedded checkpoint')
+        if manifest.get('checkpoint') is not None:
+            from .learning import Policy
+            Policy(manifest['checkpoint'])
+        for inst in manifest['instances']:
+            s = validate_scenario(inst['scenario'])
+            if scenario_hash(s) != inst['scenario_hash']:
+                raise InputError('instance scenario_hash mismatch')
+        return manifest
     check(manifest, MANIFEST_V1)
     expected = manifest.get('manifest_hash')
     unsigned = {k:v for k,v in manifest.items() if k != 'manifest_hash'}
@@ -184,14 +294,14 @@ def execute_case(root, manifest, case, cancel):
         # Quality accounting stays available in controls without event persistence.
         result['quality'] = summarize_case(s, case, observations, instance['reference'])
         result['status'] = 'cancelled' if cancelled() else 'completed'
-        if manifest['schema_version'] == 2:
+        if manifest['schema_version'] in (2, 3):
             result.update(schema_version=4, scenario_ref=f"scenarios/{case['instance']}.json",
-                          checkpoint_hash=manifest['checkpoint_hash'] if case['method']=='learned' else None,
-                          training=manifest['training'])
+                          checkpoint_hash=manifest.get('checkpoint_hash') if case['method']=='learned' else None,
+                          training=manifest.get('training', {}))
             result.pop('scenario', None)
             result.pop('reference', None)
     except Exception as exc:
-        result = dict(schema_version=4 if manifest['schema_version']==2 else 3, kind='experiment_run', case=case, status='failed',
+        result = dict(schema_version=4 if manifest['schema_version'] in (2, 3) else 3, kind='experiment_run', case=case, status='failed',
                       termination_reason='adapter_error', error=f'{type(exc).__name__}: {exc}',
                       observations=observations if case['recording'] else [], alternatives=alternatives)
     result['run_id'] = directory.parent.parent.name+'/'+case['id']
@@ -221,6 +331,8 @@ def campaign(jobs, id, manifest):
         from .learn_evaluate import archive_inputs
         archive_inputs(directory,manifest)
     else:
+        if manifest.get('checkpoint') is not None:
+            write_json_atomic(directory/'checkpoint.json', manifest['checkpoint'])
         for instance in manifest['instances']:
             write_json_atomic(directory/'scenarios'/f"{instance['id']}.json", instance['scenario'])
     for source in Path('engine').glob('*.py'):
@@ -243,7 +355,7 @@ def campaign(jobs, id, manifest):
             process.join(.1)
         path = directory/'cases'/case['id']
         if not (path/'result.json').exists():
-            failed=dict(schema_version=4 if manifest['schema_version']==2 else 3,kind='experiment_run',case=case,status='failed', termination_reason='process_error', exitcode=process.exitcode)
+            failed=dict(schema_version=4 if manifest['schema_version'] in (2, 3) else 3,kind='experiment_run',case=case,status='failed', termination_reason='process_error', exitcode=process.exitcode)
             write_json_atomic(path/'result.json',failed)
             write_json_atomic(path/'summary.json',case_summary(failed))
         wall = time.monotonic()-before
@@ -258,10 +370,11 @@ def campaign(jobs, id, manifest):
 def report(directory):
     directory = Path(directory)
     manifest = validate_manifest(load_json(directory/'manifest.json'))
-    compact = manifest['schema_version'] == 2
+    compact = manifest['schema_version'] in (2, 3)
     results = [load_json(p) for p in sorted((directory/'cases').glob('*/summary.json' if compact else '*/result.json'))]
     methods = ('ordered','shuffled','learned') if compact else METHODS
-    repetitions = range(2) if compact else range(3)
+    repetitions = sorted({c['repetition'] for c in manifest['cases']}) if manifest['schema_version'] == 3 else (range(2) if compact else range(3))
+    budgets = sorted({c['budget_s'] for c in manifest['cases']}) if manifest['schema_version'] == 3 else (5, 15)
     rows, fronts = [], []
     for result in results:
         case = result['case']
@@ -274,13 +387,15 @@ def report(directory):
         for row,result in zip(rows,results):
             row.update(checkpoint_hash=result.get('checkpoint_hash'),inference_device=result.get('learned',{}).get('device','cpu'),
                        inference_s=result.get('learned',{}).get('inference_s',0),
-                       training_device=manifest['training'].get('training_device'),
-                       shared_training_s=manifest['training'].get('training_duration_s'))
+                       training_device=manifest.get('training', {}).get('training_device'),
+                       shared_training_s=manifest.get('training', {}).get('training_duration_s'))
     for instance in manifest['instances']:
         for method in (methods if compact else ('ordered', 'shuffled')):
-            for budget in (5, 15):
+            for budget in budgets:
                 for repetition in repetitions:
                     selected = [r for r in results if r['case']['instance']==instance['id'] and r['case']['method']==method and r['case']['budget_s']==budget and r['case']['repetition']==repetition and not r['case']['control']]
+                    if not selected and manifest['schema_version'] == 3:
+                        continue
                     alternatives = nondominated([a for r in selected for a in r.get('alternatives',[]) if a['elapsed_s'] <= budget])
                     fronts.append(dict(instance=instance['id'],method=method,budget_s=budget,repetition=repetition,
                                        nominal_front_budget_s=3*budget, alternatives=alternatives,
@@ -329,12 +444,13 @@ def report(directory):
             value['training_cost']=costs
             for row in rows:
                 row.update(shared_preflight_s=costs['preflight_s'],shared_training_and_preflight_s=costs['training_and_preflight_s'])
-        value.update(checkpoint_hash=manifest['checkpoint_hash'],training=manifest['training'],
+        value.update(checkpoint_hash=manifest.get('checkpoint_hash'),training=manifest.get('training', {}),
                      unexecuted=[c['id'] for c in manifest['cases'] if c['id'] not in {r['case']['id'] for r in results}],
                      campaign_complete=(load_json(directory/'audit.json').get('campaign_complete',False)
-                                        if (directory/'audit.json').exists() and len(results)==336 else False))
+                                        if (directory/'audit.json').exists() and len(results)==336 else (len(results)==len(manifest['cases']) and manifest['schema_version']==3)))
     from .contracts_v4 import REPORT_V2
-    check(value, REPORT_V2 if compact else REPORT_V1)
+    if manifest['schema_version'] in (1, 2):
+        check(value, REPORT_V2 if manifest['schema_version'] == 2 else REPORT_V1)
     write_json_atomic(directory/'report.json',value,overwrite=True)
     fields = sorted({k for row in rows for k in row})
     output = io.StringIO(); writer=csv.DictWriter(output,fieldnames=fields); writer.writeheader(); writer.writerows(rows)

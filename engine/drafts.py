@@ -22,9 +22,13 @@ DRAFT = obj(schema_version={'type':'integer','const':1}, city_id=enum(*PRESETS),
     parameters=obj(**{key:SCENARIO['properties'][key] for key in PARAMETER_KEYS}))
 
 
-def make_draft(manifest,seed=42,count=20):
+def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',duration_cap_s=None):
     if type(seed)!=int or type(count)!=int or not 1<=count<=100:
         raise InputError('seed must be an integer; stop count must be 1–100')
+    if type(vehicles)!=int or not 1<=vehicles<=5:
+        raise InputError('vehicles must be an integer between 1 and 5')
+    if service_mode not in ('constant','packages'):
+        raise InputError('service_mode must be constant or packages')
     rng=random.Random(seed)
     center=manifest['center']
     stops=[]
@@ -40,8 +44,8 @@ def make_draft(manifest,seed=42,count=20):
               for key in ['slow','urban','fast']},idle_policy='off',idle_l_per_s=0)
     return dict(schema_version=1,city_id=manifest['city_id'],dataset_hash=manifest['manifest_hash'],
         seed=seed,mode='witness_demo',depot=center,stops=stops,
-        parameters=dict(start_s=0,vehicle_ids=['van-1','van-2'],capacity=dict(mass_kg=1000,volume_m3=10),
-            duration_cap_s=None,service=dict(mode='constant',constant_s=60,fixed_s=30,per_package_s=10),
+        parameters=dict(start_s=0,vehicle_ids=[f'van-{i+1}' for i in range(vehicles)],capacity=dict(mass_kg=1000,volume_m3=10),
+            duration_cap_s=duration_cap_s,service=dict(mode=service_mode,constant_s=60,fixed_s=30,per_package_s=10),
             fuel_model=fuel,objective=dict(time_weight=.5,fuel_weight=.5,time_scale_s=3600,fuel_scale_l=10)))
 
 

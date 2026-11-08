@@ -51,6 +51,7 @@ import type {
 } from "./types";
 import "./style.css";
 import Comparisons from "./Comparisons";
+import RnDView from "./RnDView";
 import { endpoint, request, streamUrl, token } from "./connection";
 
 async function api<T>(
@@ -147,6 +148,7 @@ function App() {
     [count, setCount] = useState(20),
     [budget, setBudget] = useState(10);
   const [policy, setPolicy] = useState<"cpu" | "learned">("cpu");
+  const [navSection, setNavSection] = useState<"scenario" | "history" | "rnd">("scenario");
   const [selected, setSelected] = useState<string | null>("depot"),
     [tool, setTool] = useState("select"),
     [mode, setMode] = useState<"search" | "route">("search");
@@ -611,24 +613,42 @@ function App() {
         <div className="brand-mark">
           <Route size={26} />
         </div>
-        <button className="rail-button chosen" title={it.scenario}>
+        <button
+          className={`rail-button ${navSection === "scenario" ? "chosen" : ""}`}
+          title={it.scenario}
+          onClick={() => {
+            setNavSection("scenario");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        >
           <Layers3 size={20} />
         </button>
         <button
-          className="rail-button"
+          className={`rail-button ${navSection === "history" ? "chosen" : ""}`}
           title={it.history}
-          onClick={() =>
+          onClick={() => {
+            setNavSection("history");
             document
               .getElementById("history")
-              ?.scrollIntoView({ behavior: "smooth" })
-          }
+              ?.scrollIntoView({ behavior: "smooth" });
+          }}
         >
           <Database size={20} />
         </button>
-        <div className="rail-bottom">
+        <button
+          className={`rail-button rail-bottom ${navSection === "rnd" ? "chosen" : ""}`}
+          title="Laboratorio R&D"
+          aria-label="Laboratorio R&D"
+          onClick={() => {
+            setNavSection("rnd");
+            document
+              .getElementById("rnd-lab")
+              ?.scrollIntoView({ behavior: "smooth" });
+          }}
+        >
           <FlaskConical size={20} />
           <span>R&amp;D</span>
-        </div>
+        </button>
       </aside>
       <div className="workspace">
         <header>
@@ -636,7 +656,7 @@ function App() {
             VRP<span>AI</span>
             <span className="brand-divider" />
             <small>{it.app}</small>
-            <span className="version">M5 / CPU+M4</span>
+            <span className="version">M6 / CPU+M4+R&amp;D</span>
           </div>
           <div className="header-status">
             <span className="local-pill">
@@ -1599,6 +1619,18 @@ function App() {
             </div>
           )}
         </section>
+        <RnDView
+          solveJobId={
+            job?.kind === "solve" && job.status === "completed" && job.feasibility === "feasible"
+              ? job.id
+              : run?.run_id ?? null
+          }
+          preparedJobId={preparedId}
+          city={draft?.city_id ?? city}
+          stopCount={draft?.stops.length ?? count}
+          defaultVehicles={f?.vehicle_ids.length ?? 2}
+          defaultServiceMode={f?.service.mode ?? "constant"}
+        />
         <Comparisons />
         <footer>
           <span>

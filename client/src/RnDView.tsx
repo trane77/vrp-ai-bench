@@ -1,0 +1,590 @@
+import { useEffect, useState } from "react";
+import { FlaskConical, ShieldAlert, Cpu, Play, CheckCircle2, AlertTriangle } from "lucide-react";
+import { request } from "./connection";
+
+type SummaryStats = {
+  mean: number;
+  p50: number;
+  p95: number;
+  max: number;
+};
+
+type StopRisk = {
+  stop_id: string;
+  window_open_s: number;
+  window_close_s: number;
+  nominal_arrival_s: number;
+  nominal_service_start_s: number;
+  nominal_slack_s: number;
+  late_rate: number;
+  mean_lateness_s: number;
+  p95_lateness_s: number;
+  p95_arrival_s: number;
+};
+
+type VehicleRisk = {
+  vehicle_id: string;
+  stops_count: number;
+  nominal_duration_s: number;
+  duration_cap_s: number | null;
+  cap_violation_rate: number;
+  mean_duration_s: number;
+  p95_duration_s: number;
+};
+
+type StochasticReport = {
+  schema_version: number;
+  scenario_id: string;
+  model: {
+    distribution: string;
+    seed: number;
+    samples: number;
+    travel_cv: number;
+    service_cv: number;
+    label: string;
+  };
+  baseline_metrics: {
+    fleet_elapsed_s: number;
+    completion_s: number;
+    estimated_fuel_l: number;
+    used_vans: number;
+  };
+  feasible_rate: number;
+  window_compliance_rate: number;
+  duration_cap_compliance_rate: number;
+  metrics: {
+    fleet_elapsed_s: SummaryStats;
+    completion_s: SummaryStats;
+    waiting_s: SummaryStats;
+    total_lateness_s: SummaryStats;
+    estimated_fuel_l: SummaryStats;
+  };
+  stop_risks: StopRisk[];
+  vehicle_risks: VehicleRisk[];
+};
+
+type LearnedModelInfo = {
+  model_hash: string;
+  schema_version: number;
+  architecture: number[];
+  feature_version: number;
+  feature_count: number;
+  training_device: string;
+  seed: number | null;
+  epoch: number | null;
+  validation_groups: number | null;
+  training_groups: number | null;
+  dataset_hash: string | null;
+  source_id: string;
+};
+
+const fmtNum = (n: number, digits = 1) =>
+  n.toLocaleString("it-IT", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+
+const fmtTime = (s: number) =>
+  `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+
+export default function RnDView({
+  solveJobId,
+  preparedJobId,
+  city,
+  stopCount,
+  defaultVehicles,
+  defaultServiceMode,
+}: {
+  solveJobId: string | null;
+  preparedJobId: string | null;
+  city: string;
+  stopCount: number;
+  defaultVehicles: number;
+  defaultServiceMode: "constant" | "packages";
+}) {
+  const [tab, setTab] = useState<"stochastic" | "campaigns" | "models">("stochastic");
+  const [samples, setSamples] = useState(100);
+  const [travelCvText, setTravelCvText] = useState("0,15");
+  const [serviceCvText, setServiceCvText] = useState("0,20");
+  const [stochSeed, setStochSeed] = useState(42);
+  const [stochReport, setStochReport] = useState<StochasticReport | null>(null);
+  const [stochBusy, setStochBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const [models, setModels] = useState<LearnedModelInfo[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  const [campVehicles, setCampVehicles] = useState(defaultVehicles);
+  const [campServiceMode, setCampServiceMode] = useState<"constant" | "packages">(defaultServiceMode);
+  const [campDurationCap, setCampDurationCap] = useState("");
+  const [campMethods, setCampMethods] = useState<Record<string, boolean>>({
+    ordered: true,
+    shuffled: true,
+    learned: true,
+  });
+  const [campBudgets, setCampBudgets] = useState<Record<number, boolean>>({
+    5: true,
+    15: true,
+  });
+  const [campBusy, setCampBusy] = useState(false);
+  const [launchedCampaign, setLaunchedCampaign] = useState<{
+    id: string;
+    status: string;
+    total: number;
+  } | null>(null);
+
+  useEffect(() => {
+    setCampVehicles(defaultVehicles);
+  }, [defaultVehicles]);
+
+  useEffect(() => {
+    setCampServiceMode(defaultServiceMode);
+  }, [defaultServiceMode]);
+
+  async function loadModels() {
+    setModelsLoading(true);
+    try {
+      const resp = await request("/api/v1/rnd/models");
+      const data: LearnedModelInfo[] = await resp.json();
+      setModels(data);
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setModelsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadModels();
+  }, []);
+
+  async function runStochastic() {
+    if (!solveJobId) return;
+    setStochBusy(true);
+    setError("");
+    try {
+      const travel_cv = Math.max(0, Math.min(2, Number(travelCvText.replace(",", ".")) || 0));
+      const service_cv = Math.max(0, Math.min(2, Number(serviceCvText.replace(",", ".")) || 0));
+      const resp = await request(`/api/v1/jobs/${solveJobId}/stochastic`, "POST", {
+        seed: stochSeed,
+        samples: Math.max(1, Math.min(1000, Math.floor(samples))),
+        travel_cv,
+        service_cv,
+      });
+      setStochReport(await resp.json());
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setStochBusy(false);
+    }
+  }
+
+  async function launchScaleCampaign() {
+    if (!preparedJobId) return;
+    const selectedMethods = Object.entries(campMethods)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    const selectedBudgets = Object.entries(campBudgets)
+      .filter(([, v]) => v)
+      .map(([k]) => Number(k));
+    if (!selectedMethods.length || !selectedBudgets.length) {
+      setError("Seleziona almeno un metodo e un budget per la campagna.");
+      return;
+    }
+    setCampBusy(true);
+    setError("");
+    try {
+      const capNum = campDurationCap.trim() === "" ? null : Number(campDurationCap.replace(",", "."));
+      const resp = await request("/api/v1/rnd/campaigns", "POST", {
+        prepared_job_id: preparedJobId,
+        vehicles: campVehicles,
+        service_mode: campServiceMode,
+        duration_cap_s: capNum,
+        methods: selectedMethods,
+        budgets: selectedBudgets,
+        weights: [1.0, 0.5, 0.0],
+        repetitions: 1,
+      });
+      const job = await resp.json();
+      const total = job.request?.manifest?.cases?.length ?? selectedMethods.length * selectedBudgets.length * 3;
+      setLaunchedCampaign({ id: job.id, status: job.status, total });
+      localStorage.setItem("m3-campaign", job.id);
+    } catch (e: any) {
+      setError(e.message ?? String(e));
+    } finally {
+      setCampBusy(false);
+    }
+  }
+
+  return (
+    <section className="rnd-section" id="rnd-lab" aria-label="Laboratorio R&D">
+      <div className="rnd-header">
+        <div>
+          <div className="eyebrow">
+            RESEARCH &amp; DEVELOPMENT <span>/ M6</span>
+          </div>
+          <h2>
+            <FlaskConical size={20} /> Laboratorio R&amp;D: Robustezza Stocastica, Scala 20–100 e Modelli
+          </h2>
+          <p>
+            Valutazione indipendente Monte Carlo su tempi di viaggio/servizio perturbati, ispezione dei modelli
+            appresi (v1/v2) e lancio di campagne multi-scala su Ai360.
+          </p>
+        </div>
+        <div className="rnd-tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={tab === "stochastic"}
+            className={tab === "stochastic" ? "chosen" : ""}
+            onClick={() => setTab("stochastic")}
+          >
+            <ShieldAlert size={14} /> Robustezza Stocastica
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "campaigns"}
+            className={tab === "campaigns" ? "chosen" : ""}
+            onClick={() => setTab("campaigns")}
+          >
+            <Play size={14} /> Campagne Multi-Scala
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "models"}
+            className={tab === "models" ? "chosen" : ""}
+            onClick={() => {
+              setTab("models");
+              loadModels();
+            }}
+          >
+            <Cpu size={14} /> Modelli Appresi ({models.length})
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="alert" role="alert">
+          {error}
+          <button onClick={() => setError("")} aria-label="Chiudi errore R&D">
+            ×
+          </button>
+        </div>
+      )}
+
+      {tab === "stochastic" && (
+        <div className="rnd-card">
+          <div className="rnd-controls">
+            <label className="field">
+              Campioni Monte Carlo
+              <input
+                type="text"
+                inputMode="numeric"
+                value={samples}
+                onChange={(e) => setSamples(Number(e.target.value.replace(/\D/g, "")) || 1)}
+              />
+            </label>
+            <label className="field">
+              Variabilità traffico (CV)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={travelCvText}
+                onChange={(e) => setTravelCvText(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              Variabilità servizio (CV)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={serviceCvText}
+                onChange={(e) => setServiceCvText(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              Seed stocastico
+              <input
+                type="text"
+                inputMode="numeric"
+                value={stochSeed}
+                onChange={(e) => setStochSeed(Number(e.target.value.replace(/\D/g, "")) || 0)}
+              />
+            </label>
+            <button
+              className="primary"
+              disabled={!solveJobId || stochBusy}
+              onClick={runStochastic}
+            >
+              <ShieldAlert size={14} />
+              {stochBusy ? "Simulazione in corso…" : "Esegui stress test stocastico"}
+            </button>
+          </div>
+
+          {!solveJobId && (
+            <p className="helper">
+              Completa prima una ricerca fattibile nello Scenario (CPU o Politica appresa) per valutare la tenuta
+              stocastica dei percorsi.
+            </p>
+          )}
+
+          {stochReport && (
+            <div className="stochastic-results">
+              <div className="rnd-kpis">
+                <div className="rnd-kpi">
+                  <span>TENUTA COMPLESSIVA</span>
+                  <strong className={stochReport.feasible_rate >= 0.8 ? "kpi-good" : "kpi-warn"}>
+                    {fmtNum(stochReport.feasible_rate * 100, 1)}%
+                  </strong>
+                  <small>
+                    Finestre: {fmtNum(stochReport.window_compliance_rate * 100, 1)}% · Durata:{" "}
+                    {fmtNum(stochReport.duration_cap_compliance_rate * 100, 1)}%
+                  </small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>TEMPO FLOTTA (P50 / P95)</span>
+                  <strong>
+                    {fmtTime(stochReport.metrics.fleet_elapsed_s.p50)} /{" "}
+                    {fmtTime(stochReport.metrics.fleet_elapsed_s.p95)}
+                  </strong>
+                  <small>Nominale: {fmtTime(stochReport.baseline_metrics.fleet_elapsed_s)}</small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>RITARDO TOTALE (MEDIA / P95)</span>
+                  <strong>
+                    {fmtNum(stochReport.metrics.total_lateness_s.mean, 1)} s /{" "}
+                    {fmtNum(stochReport.metrics.total_lateness_s.p95, 1)} s
+                  </strong>
+                  <small>Max osservato: {fmtNum(stochReport.metrics.total_lateness_s.max, 1)} s</small>
+                </div>
+                <div className="rnd-kpi">
+                  <span>CARBURANTE STIMATO (P50 / P95)</span>
+                  <strong>
+                    {fmtNum(stochReport.metrics.estimated_fuel_l.p50, 2)} L /{" "}
+                    {fmtNum(stochReport.metrics.estimated_fuel_l.p95, 2)} L
+                  </strong>
+                  <small>Nominale: {fmtNum(stochReport.baseline_metrics.estimated_fuel_l, 2)} L</small>
+                </div>
+              </div>
+
+              <p className="helper">{stochReport.model.label}</p>
+
+              <div className="rnd-tables">
+                <div className="comparison-table">
+                  <h3>Vulnerabilità finestre per fermata (top 10 più critiche)</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fermata</th>
+                        <th>Finestra</th>
+                        <th>Arrivo nom.</th>
+                        <th>Margine nom.</th>
+                        <th>Prob. ritardo</th>
+                        <th>Ritardo P95</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stochReport.stop_risks.slice(0, 10).map((sr) => (
+                        <tr key={sr.stop_id}>
+                          <td>{sr.stop_id}</td>
+                          <td>
+                            {fmtTime(sr.window_open_s)} – {fmtTime(sr.window_close_s)}
+                          </td>
+                          <td>{fmtTime(sr.nominal_arrival_s)}</td>
+                          <td>{fmtNum(sr.nominal_slack_s, 0)} s</td>
+                          <td>
+                            <span className={sr.late_rate > 0.2 ? "case-status failed" : "case-status completed"}>
+                              {fmtNum(sr.late_rate * 100, 1)}%
+                            </span>
+                          </td>
+                          <td>{fmtNum(sr.p95_lateness_s, 1)} s</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="comparison-table">
+                  <h3>Tenuta durata per furgone</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Furgone</th>
+                        <th>Fermate</th>
+                        <th>Durata nom.</th>
+                        <th>Durata P95</th>
+                        <th>Violazione cap</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stochReport.vehicle_risks.map((vr) => (
+                        <tr key={vr.vehicle_id}>
+                          <td>{vr.vehicle_id}</td>
+                          <td>{vr.stops_count}</td>
+                          <td>{fmtTime(vr.nominal_duration_s)}</td>
+                          <td>{fmtTime(vr.p95_duration_s)}</td>
+                          <td>{fmtNum(vr.cap_violation_rate * 100, 1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "campaigns" && (
+        <div className="rnd-card">
+          <p className="helper">
+            Configura e accoda una campagna comparativa multi-preferenza (`1,0 / 0,5 / 0,0`) sullo scenario stradale
+            preparato corrente (<strong>{city}</strong> · <strong>{stopCount} fermate</strong>). Per testare la scala a{" "}
+            <strong>50</strong> o <strong>100 fermate</strong>, imposta il numero di fermate nel pannello Scenario,
+            clicca <em>Crea demo</em> e <em>Prepara percorsi</em>, quindi avvia la campagna qui.
+          </p>
+          <div className="rnd-controls">
+            <label className="field">
+              Furgoni (1–5)
+              <input
+                type="text"
+                inputMode="numeric"
+                value={campVehicles}
+                onChange={(e) =>
+                  setCampVehicles(Math.max(1, Math.min(5, Number(e.target.value.replace(/\D/g, "")) || 1)))
+                }
+              />
+            </label>
+            <label className="field">
+              Modalità servizio
+              <select
+                value={campServiceMode}
+                onChange={(e) => setCampServiceMode(e.target.value as "constant" | "packages")}
+              >
+                <option value="constant">Durata costante</option>
+                <option value="packages">Durata per pacco</option>
+              </select>
+            </label>
+            <label className="field">
+              Durata massima (s, opz.)
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Nessun limite"
+                value={campDurationCap}
+                onChange={(e) => setCampDurationCap(e.target.value)}
+              />
+            </label>
+            <div className="field">
+              <span>Metodi</span>
+              <div className="rnd-checks">
+                {(["ordered", "shuffled", "learned"] as const).map((m) => (
+                  <label key={m}>
+                    <input
+                      type="checkbox"
+                      checked={!!campMethods[m]}
+                      onChange={(e) => setCampMethods({ ...campMethods, [m]: e.target.checked })}
+                    />
+                    {m}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span>Budget (s)</span>
+              <div className="rnd-checks">
+                {[5, 15].map((b) => (
+                  <label key={b}>
+                    <input
+                      type="checkbox"
+                      checked={!!campBudgets[b]}
+                      onChange={(e) => setCampBudgets({ ...campBudgets, [b]: e.target.checked })}
+                    />
+                    {b} s
+                  </label>
+                ))}
+              </div>
+            </div>
+            <button
+              className="primary"
+              disabled={!preparedJobId || campBusy}
+              onClick={launchScaleCampaign}
+            >
+              <Play size={14} />
+              {campBusy ? "Invio campagna…" : "Avvia campagna R&D"}
+            </button>
+          </div>
+
+          {!preparedJobId && (
+            <p className="helper">
+              Prepara prima i percorsi stradali nello Scenario per abilitare l'avvio della campagna R&amp;D.
+            </p>
+          )}
+
+          {launchedCampaign && (
+            <div className="rnd-launched">
+              <CheckCircle2 size={16} />
+              <span>
+                Campagna <strong>{launchedCampaign.id.slice(0, 8)}</strong> accodata ({launchedCampaign.total} casi).
+              </span>
+              <button
+                className="text-button"
+                onClick={() =>
+                  document.getElementById("comparisons")?.scrollIntoView({ behavior: "smooth" })
+                }
+              >
+                Vai ai Confronti →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "models" && (
+        <div className="rnd-card">
+          {modelsLoading ? (
+            <p className="helper">Caricamento modelli…</p>
+          ) : !models.length ? (
+            <p className="helper">
+              <AlertTriangle size={14} /> Nessun checkpoint trovato in <code>runs/m4-imports</code> o{" "}
+              <code>runs/m6-models</code>.
+            </p>
+          ) : (
+            <div className="comparison-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sorgente</th>
+                    <th>Schema</th>
+                    <th>Architettura MLP</th>
+                    <th>Feature</th>
+                    <th>Device Training</th>
+                    <th>Seed / Epoca</th>
+                    <th>Gruppi Train / Val</th>
+                    <th>Model Hash (SHA-256)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {models.map((m) => (
+                    <tr key={m.model_hash}>
+                      <td>{m.source_id.slice(0, 12)}</td>
+                      <td>v{m.schema_version}</td>
+                      <td>{m.architecture.join(" → ")}</td>
+                      <td>
+                        v{m.feature_version} ({m.feature_count})
+                      </td>
+                      <td>{m.training_device}</td>
+                      <td>
+                        {m.seed ?? "—"} / {m.epoch ?? "—"}
+                      </td>
+                      <td>
+                        {m.training_groups ?? "—"} / {m.validation_groups ?? "—"}
+                      </td>
+                      <td className="mono">{m.model_hash.slice(0, 16)}…</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}

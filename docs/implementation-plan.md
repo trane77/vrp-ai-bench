@@ -144,3 +144,10 @@ recorded as a prototype limitation, not hidden by the functional test result.
   `sessionStorage` client connection bar, interactive `cpu`/`learned` policy
   selection, and audited main-computer acceptance with mid-search WebSocket
   disconnect/reconnect cursor verification. Verified in [M5 LAN operations](m5-lan.md).
+- **M6**: Feature Schema v2 (38 features, `38→64→32→2` MLP) with $O(1)$ route-delta
+  caching for 20/50/100-stop neighborhoods, backward-compatible with M4 v1
+  checkpoints; configurable scale-ladder campaigns (`schema_version=3`); independent
+  seeded Monte Carlo stochastic robustness evaluator (`engine/stochastic.py`);
+  interactive R&D laboratory panel (`client/src/RnDView.tsx`) wired to the sidebar
+  `R&D` button; and Vite Rollup manual chunk splitting for `maplibre-gl` and
+  `@deck.gl`.

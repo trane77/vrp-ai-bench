@@ -105,11 +105,11 @@ def read_dataset(path):
     return value, scenarios
 
 
-def label_state(s, solution, cancelled=lambda:False):
+def label_state(s, solution, cancelled=lambda:False, version=1):
     report = validate_solution(s, solution)
     if not report['feasible']: raise InputError('cannot label an invalid current state')
     routes = [r['stop_ids'] for r in solution['routes']]
-    features = Features(s, routes, report); current = objective_score(s, report)
+    features = Features(s, routes, report, version=version); current = objective_score(s, report)
     rows = []
     for index, move in enumerate(enumerate_moves(routes)):
         if cancelled(): raise RuntimeError('labeling cancelled or phase deadline')

@@ -44,6 +44,24 @@ class NewJob(Strict):
     restarts: int=Field(default=8,ge=1,le=1000)
     policy: str | None=None  # "cpu" | "learned" | None (defaults to "cpu")
 
+class StochasticRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    seed: int=42
+    samples: int=Field(default=100,ge=1,le=1000)
+    travel_cv: float=Field(default=0.15,ge=0.0,le=2.0)
+    service_cv: float=Field(default=0.20,ge=0.0,le=2.0)
+
+class NewScaleCampaign(BaseModel):
+    model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
+    prepared_job_id: str
+    vehicles: int | None=Field(default=None,ge=1,le=5)
+    service_mode: str | None=None
+    duration_cap_s: float | None=None
+    methods: list[str]=Field(default_factory=lambda: ['ordered','shuffled','learned'])
+    budgets: list[int]=Field(default_factory=lambda: [5,15])
+    weights: list[float]=Field(default_factory=lambda: [1.0,0.5,0.0])
+    repetitions: int=Field(default=1,ge=1,le=2)
+
 
 def same_origin(origin,host):
     try:
@@ -162,6 +180,114 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         result=jobs.result(id)
         if jobs.get(id)['kind']!='prepare': raise InputError('editor requires a preparation result')
         return draft_from_scenario(result)
+
+    @app.post('/api/v1/jobs/{id}/stochastic')
+    def job_stochastic(id:str,body:StochasticRequest):
+        job=jobs.get(id)
+        if job['kind']!='solve' or job['status']!='completed' or job['feasibility']!='feasible':
+            raise Conflict('stochastic evaluation requires a completed feasible solve job')
+        run=jobs.result(id)
+        from .stochastic import evaluate_stochastic
+        return evaluate_stochastic(run['scenario'],run['solution'],seed=body.seed,samples=body.samples,
+                                   travel_cv=body.travel_cv,service_cv=body.service_cv)
+
+    def discover_checkpoints():
+        import os
+        candidates=[]
+        env_ckpt=os.environ.get('VRP_LEARNED_CHECKPOINT')
+        if env_ckpt and Path(env_ckpt).is_file():
+            candidates.append(Path(env_ckpt))
+        for pattern in ('m6-models/*/checkpoint.json','m4-imports/*/checkpoint.json'):
+            candidates.extend(sorted(jobs.root.glob(pattern),key=lambda p:p.stat().st_mtime,reverse=True))
+            candidates.extend(sorted(jobs.root.parent.glob(pattern),key=lambda p:p.stat().st_mtime,reverse=True))
+        seen=set(); models=[]
+        from .learning import Policy
+        for path in candidates:
+            try:
+                pol=Policy.load(path)
+                m=pol.model
+                h=m['model_hash']
+                if h in seen: continue
+                seen.add(h)
+                meta=m.get('metadata',{})
+                models.append(dict(
+                    model_hash=h,
+                    schema_version=m['schema_version'],
+                    architecture=m['architecture'],
+                    feature_version=m['feature_schema']['version'],
+                    feature_count=len(m['feature_schema']['names']),
+                    training_device=meta.get('training_device','cpu'),
+                    seed=meta.get('seed'),
+                    epoch=meta.get('epoch'),
+                    validation_groups=meta.get('validation_groups'),
+                    training_groups=meta.get('training_groups'),
+                    dataset_hash=meta.get('dataset_hash'),
+                    source_id=path.parent.name,
+                    model=m,
+                ))
+            except Exception:
+                continue
+        return models
+
+    @app.get('/api/v1/rnd/models')
+    def rnd_models():
+        return [{k:v for k,v in item.items() if k!='model'} for item in discover_checkpoints()]
+
+    @app.post('/api/v1/rnd/campaigns',status_code=202)
+    def new_scale_campaign(body:NewScaleCampaign):
+        import copy
+        from .contracts import validate_scenario
+        from .experiments import freeze_scale_campaign
+        from .solver import proposal
+        from .validation import validate_solution
+        prep=jobs.get(body.prepared_job_id)
+        if prep['kind']!='prepare' or prep['status']!='completed':
+            raise Conflict('prepared scenario job is not completed')
+        s=copy.deepcopy(jobs.result(body.prepared_job_id))
+        if body.vehicles is not None:
+            s['vehicle_ids']=[f'van-{i+1}' for i in range(body.vehicles)]
+        if body.service_mode is not None:
+            if body.service_mode not in ('constant','packages'):
+                raise InputError('service_mode must be constant or packages')
+            s['service']['mode']=body.service_mode
+        if body.duration_cap_s is not None:
+            s['duration_cap_s']=body.duration_cap_s if body.duration_cap_s>0 else None
+        # Recompute witness routes & windows for the selected fleet/service configuration over the frozen road matrix.
+        routes=[[] for _ in s['vehicle_ids']]
+        for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
+        lookup={(leg['source'],leg['target']):leg for leg in s['legs']}
+        stops={stop['id']:stop for stop in s['stops']}
+        for route in routes:
+            now=s['start_s']; previous=s['depot_id']
+            for sid in route:
+                leg=lookup[previous,sid]
+                if not leg['reachable']: raise InputError('witness route contains an unreachable leg')
+                now+=leg['travel_s']; stop=stops[sid]
+                stop['window_open_s']=max(s['start_s'],now-300)
+                stop['window_close_s']=now+300
+                svc=s['service']
+                now+=(svc['constant_s'] if svc['mode']=='constant' else svc['fixed_s']+svc['per_package_s']*stop['packages'])
+                previous=sid
+        s['generation']['witness_routes']=routes
+        s=validate_scenario(s)
+        if not validate_solution(s,proposal(s,routes))['feasible']:
+            raise InputError('configured parameters violate witness feasibility (e.g. duration_cap_s or capacity too tight)')
+        ckpt_model=None
+        if 'learned' in body.methods:
+            discovered=discover_checkpoints()
+            if not discovered:
+                raise InputError('no learned checkpoint found on server for learned method')
+            ckpt_model=discovered[0]['model']
+        weights=[1 if w==1 else (0 if w==0 else 0.5) for w in body.budgets and body.weights]
+        manifest=freeze_scale_campaign(
+            [s],
+            methods=tuple(body.methods),
+            budgets=tuple(body.budgets),
+            weights=tuple(weights),
+            repetitions=body.repetitions,
+            checkpoint_model=ckpt_model,
+        )
+        return public_job(jobs.submit('experiment',dict(manifest=manifest)))
 
     @app.get('/api/v1/jobs/{id}/events')
     def events(id:str,after:int=0):

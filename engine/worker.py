@@ -94,6 +94,8 @@ class Worker:
                     else:
                         # Walk m4-imports for checkpoint.json files and pick the newest.
                         candidates=[
+                            *self.jobs.root.glob('m6-models/*/checkpoint.json'),
+                            *self.jobs.root.parent.glob('m6-models/*/checkpoint.json'),
                             *self.jobs.root.glob('m4-imports/*/checkpoint.json'),
                             *self.jobs.root.parent.glob('m4-imports/*/checkpoint.json'),
                         ]
