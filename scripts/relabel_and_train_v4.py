@@ -22,6 +22,18 @@ def main():
     t0 = time.time()
     
     for idx, e in enumerate(src_coll['entries']):
+        dest_file = v4_samples_dir / e['path']
+        if dest_file.exists():
+            sample = load_json(dest_file)
+            if sample.get('feature_schema') == FEATURE_SCHEMA_V4 and sample.get('groups') and len(sample['groups'][0]['rows'][0]['features']) == 48:
+                sample = signed(sample, 'samples_hash')
+                write_json_atomic(dest_file, sample)
+                entries.append(dict(path=e['path'], samples_hash=sample['samples_hash'],
+                                    status=sample['status'], groups=len(sample['groups'])))
+                if (idx + 1) % 20 == 0 or idx + 1 == len(src_coll['entries']):
+                    print(f"  Re-signed existing v4 {idx + 1}/{len(src_coll['entries'])} in {time.time()-t0:.1f}s")
+                continue
+
         src_file = Path(src_coll_path).parent / e['path']
         sample = load_json(src_file)
         s = scenarios[sample['scenario_id']]
@@ -36,7 +48,6 @@ def main():
         sample['groups'] = new_groups
         sample = signed(sample, 'samples_hash')
         
-        dest_file = v4_samples_dir / e['path']
         write_json_atomic(dest_file, sample)
         entries.append(dict(path=e['path'], samples_hash=sample['samples_hash'], 
                             status=sample['status'], groups=len(sample['groups'])))

@@ -259,7 +259,8 @@ class Features:
 
 
 def signed(value, key):
-    return dict(value, **{key: scenario_hash(value)})
+    raw = {k: v for k, v in value.items() if k != key}
+    return dict(raw, **{key: scenario_hash(raw)})
 
 
 def verify_hash(value, key):
