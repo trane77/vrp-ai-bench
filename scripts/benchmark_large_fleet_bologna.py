@@ -23,7 +23,7 @@ def run_benchmark():
     # Verify witness solution feasibility
     witness_sol = proposal(scenario, scenario['generation']['witness_routes'])
     val = validate_solution(scenario, witness_sol)
-    print(f"Witness solution feasible: {val['feasible']}, total distance: {val['total_distance_m']}m")
+    print(f"Witness solution feasible: {val['feasible']}, total distance: {val['metrics']['distance_m']}m")
     assert val['feasible'], "Witness solution must be feasible"
     
     # 2. Load policy v4 GPU-trained model
