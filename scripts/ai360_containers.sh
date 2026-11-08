@@ -59,6 +59,7 @@ start_osrm() {
   fi
   echo "Starting vrp-m5-osrm..."
   podman run -d --name vrp-m5-osrm --restart always \
+    --security-opt label=disable \
     -p 127.0.0.1:5000:5000 \
     -v "${OSRM_DATA_DIR}:/data:ro" \
     "${OSRM_IMAGE}" \
