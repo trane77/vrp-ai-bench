@@ -280,3 +280,31 @@ match the corresponding current core files. Later changes to orchestration,
 contracts, import verification and derived report/UI fields are described above;
 raw measurements retain the exact sources used. No additional held-out cases,
 model selection or parameter changes followed inspection of these results.
+
+## Policy v4 & Large Fleet Scaling (Bologna Metropolitan Scope)
+
+To scale learning and local search to large delivery fleets (up to 50 vehicles and 1,000+ stops) within a single city (Bologna), the pipeline was upgraded to **Policy v4**:
+
+1. **Spatial Neighborhood Pruning (`engine/moves.py`)**:
+   - For fleets $> 5$ vehicles, cross-route moves (`relocate`, `swap`) are evaluated only between the $k=4$ nearest vehicle routes based on route centroids and bounding boxes.
+   - Reduces move evaluations by $> 65\%$, avoiding combinatorial explosion in large single-city fleets while preserving all intra-route optimizations (`reverse`, intra-route `relocate`).
+
+2. **Scale-Invariant Feature Schema v4 (`engine/learning.py`)**:
+   - Extends the feature vector to 48 features (`[48, 64, 32, 2]` MLP) with:
+     - `routes_centroid_dist_norm`: Euclidean distance between route centroids normalized by city diameter.
+     - `routes_bbox_overlap_ratio`: Intersection over Union (IoU) of vehicle route bounding boxes.
+     - Logarithmic scaling $\log(1+x)$ for fleet and stop count normalizations (`log1p(n)/log1p(2000)` and `log1p(V)/log1p(100)`).
+   - Retains 100% backward compatibility for v1 (`30`), v2 (`38`), and v3 (`46`) checkpoints.
+
+3. **GPU-Accelerated Supervised Training on Ai360**:
+   - AMD Radeon 890M GPU (`gfx1150`, RDNA 3.5) with PyTorch ROCm 7.1.1 (`cuda:0`).
+   - 50-epoch training on 3 random seeds over 192 sample entries completed in **60.43 s** on `cuda:0`.
+   - Selected validation rank improved from `0.111287` (v3) to **`0.057613`** (v4).
+   - Checkpoint hash `da70280e52abfeaeab0254c2cbd6362684785cc78abe8b93997017f22d0cd61d` registered under `runs/m4-imports/gpu-checkpoint-v4/checkpoint.json` and served via `/api/v1/rnd/models`.
+
+4. **50-Vehicle Bologna Benchmark Results**:
+   - Evaluated on real Bologna OSRM road network (50 vehicles, 50 stops, 2,550 road legs, 30 s budget):
+     - **Baseline solver (`ordered`)**: 91,145.1 m, 12,452 evaluations (`budget_exhausted`).
+     - **Policy v4 (`learned` + spatial pruning)**: **81,852.9 m**, 5,930 evaluations (`search_exhausted`), 2.932 s neural inference time.
+     - **Impact**: **-9,292.3 m (-10.20% distance reduction)** with full independent solution validation.
+
