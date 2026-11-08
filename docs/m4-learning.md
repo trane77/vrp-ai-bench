@@ -22,7 +22,7 @@ has no network and publishes no HTTP ports. Fedora 44 is outside AMD's validated
 OS matrix for this combination; see the [AMD ROCm 7.1.1 matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.1.1/docs/compatibility/compatibilityryz/native_linux/native_linux_compatibility.html).
 CPU forward/backward/update is tested first. Training records a GPU
 forward/backward/update probe and its duration; a failed probe selects CPU and
-records its reason. NPU execution is outside M4. Experimental inference always
+records its reason. With the verified Podman ROCm configuration (`--device /dev/kfd --device /dev/dri --security-opt label=disable`, detailed in [M5 LAN operations](m5-lan.md)), the GPU probe succeeds on the host's AMD Radeon 890M (`gfx1150`) in ~0.75 s, enabling GPU-accelerated training. NPU execution remains outside M4. Experimental inference always
 uses NumPy FP32 on CPU with one BLAS thread, including cold checkpoint reading,
 feature extraction, sorting, route copies and mandatory validations in solve time.
 

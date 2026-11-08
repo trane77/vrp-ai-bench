@@ -34,6 +34,62 @@ Interactive solve jobs support both the classical heuristic (`policy: "cpu"`) an
 
 To rotate the token: generate a new random token in a restricted file, update the configuration path, restart the service process (`podman restart vrp-m5-service`), and enter the new token in the client.
 
+## Container Stack Management (`scripts/ai360_containers.sh`)
+
+A dedicated management script [`scripts/ai360_containers.sh`](../scripts/ai360_containers.sh) automates the lifecycle of the three-container stack on Ai360 (`vrp-m5-osrm`, `vrp-m5-service`, and `vrp-m5-worker`). It can be invoked directly on Ai360 or remotely from the development workstation via `--remote`.
+
+```sh
+# Start all three containers with verified GPU acceleration and SELinux flags
+./scripts/ai360_containers.sh --remote start
+
+# Inspect running containers, ports, and host GPU device nodes
+./scripts/ai360_containers.sh --remote status
+
+# Run end-to-end PyTorch ROCm GPU diagnostics and engine probe inside the container
+./scripts/ai360_containers.sh --remote test-gpu
+
+# View live container logs
+./scripts/ai360_containers.sh --remote logs service
+./scripts/ai360_containers.sh --remote logs worker
+./scripts/ai360_containers.sh --remote logs osrm
+
+# Stop or restart the entire stack
+./scripts/ai360_containers.sh --remote restart
+./scripts/ai360_containers.sh --remote stop
+```
+
+## ROCm GPU Configuration & SELinux on Fedora (Ai360)
+
+Ai360 features an **AMD Ryzen AI 9 HX 370** APU with integrated **AMD Radeon 890M Graphics** (`gfx1150`, RDNA 3.5 architecture) and an XDNA 2 NPU (`aie2`). The host runs Fedora Core 44 (`Linux 7.2.x`) with SELinux in `Enforcing` mode.
+
+Running PyTorch ROCm inside rootless Podman on this platform requires a specific combination of container parameters:
+
+```sh
+PODMAN_GPU_FLAGS=(
+  --device /dev/kfd                   # Kernel Fusion Driver compute device node
+  --device /dev/dri                   # Direct Rendering Infrastructure display/render node
+  --group-add video                   # Access to /dev/dri/card*
+  --group-add render                  # Access to /dev/kfd and /dev/dri/renderD128
+  --ipc host                          # Shared memory IPC for PyTorch tensor allocators
+  --cap-add SYS_PTRACE                # Required for HIP runtime memory inspection/tracing
+  --security-opt seccomp=unconfined   # Unrestricted syscalls for ROCm driver interaction
+  --security-opt label=disable        # CRITICAL: disables container SELinux separation
+)
+```
+
+> [!IMPORTANT]
+> **Why `--security-opt label=disable` is required:**
+> On Fedora/RHEL, SELinux by default isolates container processes from mapping device memory directly into user space. Without `label=disable`, any PyTorch allocation on `/dev/kfd` causes an immediate `SIGSEGV` with the misleading message:
+> `Memory critical error by agent node-0 ... Reason: Memory in use.`
+> Disabling container SELinux labeling allows the AMD KFD memory manager to map DMA pages directly, enabling 100% stable GPU execution.
+
+### GPU Verification Results
+
+Running `./scripts/ai360_containers.sh --remote test-gpu` confirms:
+1. **PyTorch HIP Backend**: `2.9.1+rocm7.1.1.git351ff442` detects `cuda:0` as `AMD Radeon Graphics`.
+2. **Tensor Math**: $1000 \times 1000$ matrix multiplication executed on `cuda:0` without errors.
+3. **Engine GPU Probe**: `probe_gpu(version=3)` successfully executes forward pass, loss calculation, backward pass, and optimizer weight update in ~0.75 s (`status: 'passed'`).
+
 ## Acceptance Evidence (2026-11-07)
 
 Acceptance was audited independently from the main development environment using `scripts/accept_m5.py`. Results are recorded in `runs/m5-acceptance.json`.
