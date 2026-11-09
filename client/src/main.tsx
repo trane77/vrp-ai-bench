@@ -15,6 +15,7 @@ import {
   Database,
   Flag,
   FlaskConical,
+  Languages,
   Layers3,
   MapPin,
   MousePointer2,
@@ -36,7 +37,7 @@ import {
 import { colors } from "./colors";
 const MapView = React.lazy(() => import("./MapView"));
 import { cityTime, emptyReplay, mergeEvents, stateAt } from "./replay";
-import { it } from "./it";
+import { I18nProvider, useI18n, SPEED_OPTIONS } from "./i18n";
 import type {
   City,
   Coord,
@@ -127,6 +128,7 @@ function Field({
 }
 
 function App() {
+  const { t, lang, setLang } = useI18n();
   const [remoteEndpoint, setRemoteEndpoint] = useState(() => endpoint() === location.origin ? "" : endpoint());
   const [remoteToken, setRemoteToken] = useState(() => token());
   const [cities, setCities] = useState<City[]>([]),
@@ -621,7 +623,7 @@ function App() {
         </div>
         <button
           className={`rail-button ${navSection === "scenario" ? "chosen" : ""}`}
-          title={it.scenario}
+          title={t.scenario}
           onClick={() => {
             setNavSection("scenario");
             window.scrollTo({ top: 0, behavior: "smooth" });
@@ -631,7 +633,7 @@ function App() {
         </button>
         <button
           className={`rail-button ${navSection === "history" ? "chosen" : ""}`}
-          title={it.history}
+          title={t.history}
           onClick={() => {
             setNavSection("history");
             document
@@ -661,18 +663,40 @@ function App() {
           <div className="brand">
             VRP<span>AI</span>
             <span className="brand-divider" />
-            <small>{it.app}</small>
+            <small>{t.app}</small>
             <span className="version">M8 / CPU+M4+R&amp;D</span>
           </div>
           <div className="header-status">
             <span className="local-pill">
               <span className="live-dot" />
-              {it.subtitle}
+              {t.subtitle}
             </span>
             <span className={connected ? "connection" : "connection warning"}>
               {connected ? <Wifi size={15} /> : <WifiOff size={15} />}
-              <span>{connected ? it.online : it.disconnected}</span>
+              <span>{connected ? t.online : t.disconnected}</span>
             </span>
+            <div className="lang-selector" role="group" aria-label={t.language}>
+              <Languages size={15} className="lang-icon" />
+              <button
+                type="button"
+                className={`lang-btn ${lang === "it" ? "active" : ""}`}
+                onClick={() => setLang("it")}
+                title="Italiano"
+                aria-label="Italiano"
+              >
+                IT
+              </button>
+              <span className="lang-sep">/</span>
+              <button
+                type="button"
+                className={`lang-btn ${lang === "en" ? "active" : ""}`}
+                onClick={() => setLang("en")}
+                title="English"
+                aria-label="English"
+              >
+                EN
+              </button>
+            </div>
           </div>
         </header>
         <form className="connection-settings" onSubmit={(e) => {
@@ -694,13 +718,13 @@ function App() {
             <div className="eyebrow">
               EXPERIMENT WORKSPACE <span>/ 01</span>
             </div>
-            <h1>{it.tagline}</h1>
-            <p>{it.synthetic}</p>
+            <h1>{t.tagline}</h1>
+            <p>{t.synthetic}</p>
           </div>
           <div className="intro-note">
             <FlaskConical size={18} />
             <div>
-              CLASSICAL BASELINE<small>{it.notCertified}</small>
+              CLASSICAL BASELINE<small>{t.notCertified}</small>
             </div>
           </div>
         </div>
@@ -717,15 +741,15 @@ function App() {
             <div className="panel-title">
               <span>
                 <Settings2 size={16} />
-                {it.scenario}
+                {t.scenario}
               </span>
               <span className="step">01</span>
             </div>
             <div className="config-body">
               <label className="field">
-                {it.city}
+                {t.city}
                 <select
-                  aria-label={it.city}
+                  aria-label={t.city}
                   value={city}
                   disabled={active || busy}
                   onChange={(e) => {
@@ -758,18 +782,18 @@ function App() {
               >
                 <Database size={13} />
                 {citiesLoading
-                  ? it.loading
+                  ? t.loading
                   : activeCity?.installed
-                    ? it.installed
-                    : it.notInstalled}
+                    ? t.installed
+                    : t.notInstalled}
                 <small>
                   {activeCity?.manifest?.version.slice(0, 8) ?? "—"}
                 </small>
               </div>
               <fieldset className="fields" disabled={active || busy}>
-                <Field label={it.seed} value={seed} onChange={setSeed} />
+                <Field label={t.seed} value={seed} onChange={setSeed} />
                 <Field
-                  label={it.stops}
+                  label={t.stops}
                   value={count}
                   min={1}
                   onChange={setCount}
@@ -781,10 +805,10 @@ function App() {
                 onClick={createDemo}
               >
                 <Plus size={15} />
-                {it.demo}
+                {t.demo}
               </button>
               {!activeCity?.installed && !citiesLoading && (
-                <p className="helper">{it.unavailable}</p>
+                <p className="helper">{t.unavailable}</p>
               )}
               {draft && f && (
                 <fieldset disabled={active || busy}>
@@ -793,7 +817,7 @@ function App() {
                   </div>
                   <div className="fields">
                     <Field
-                      label={it.fleet}
+                      label={t.fleet}
                       value={f.vehicle_ids.length}
                       min={1}
                       onChange={(n) =>
@@ -807,13 +831,13 @@ function App() {
                       }
                     />
                     <Field
-                      label={it.budget}
+                      label={t.budget}
                       value={budget}
                       onChange={setBudget}
                     />
                   </div>
                   <label className="field">
-                    {it.serviceMode}
+                    {t.serviceMode}
                     <select
                       value={f.service.mode}
                       onChange={(e) =>
@@ -823,12 +847,12 @@ function App() {
                         })
                       }
                     >
-                      <option value="constant">{it.constant}</option>
-                      <option value="packages">{it.packages}</option>
+                      <option value="constant">{t.constant}</option>
+                      <option value="packages">{t.packages}</option>
                     </select>
                   </label>
                   <label className="field">
-                    {it.duration}
+                    {t.duration}
                     <input
                       type="number"
                       min="0"
@@ -841,17 +865,17 @@ function App() {
                       }
                     />
                   </label>
-                  <div className="field-caption">{it.capacity}</div>
+                  <div className="field-caption">{t.capacity}</div>
                   <div className="fields">
                     <Field
-                      label={it.mass}
+                      label={t.mass}
                       value={f.capacity.mass_kg}
                       onChange={(n) =>
                         params("capacity", { ...f.capacity, mass_kg: n })
                       }
                     />
                     <Field
-                      label={it.volume}
+                      label={t.volume}
                       value={f.capacity.volume_m3}
                       step={0.01}
                       onChange={(n) =>
@@ -860,11 +884,11 @@ function App() {
                     />
                   </div>
                   <div className="section-line">
-                    <span>{it.weights.toUpperCase()}</span>
+                    <span>{t.weights.toUpperCase()}</span>
                   </div>
                   <div className="fields">
                     <Field
-                      label={it.timeWeight}
+                      label={t.timeWeight}
                       value={f.objective.time_weight}
                       step={0.1}
                       onChange={(n) =>
@@ -872,7 +896,7 @@ function App() {
                       }
                     />
                     <Field
-                      label={it.fuelWeight}
+                      label={t.fuelWeight}
                       value={f.objective.fuel_weight}
                       step={0.1}
                       onChange={(n) =>
@@ -880,14 +904,14 @@ function App() {
                       }
                     />
                     <Field
-                      label={it.timeScale}
+                      label={t.timeScale}
                       value={f.objective.time_scale_s}
                       onChange={(n) =>
                         params("objective", { ...f.objective, time_scale_s: n })
                       }
                     />
                     <Field
-                      label={it.fuelScale}
+                      label={t.fuelScale}
                       value={f.objective.fuel_scale_l}
                       step={0.1}
                       onChange={(n) =>
@@ -896,7 +920,7 @@ function App() {
                     />
                   </div>
                   <details>
-                    <summary>{it.advanced}</summary>
+                    <summary>{t.advanced}</summary>
                     <div
                       className="helper"
                       style={{
@@ -915,21 +939,21 @@ function App() {
                       </strong>
                     </div>
                     <Field
-                      label={it.constantSeconds}
+                      label={t.constantSeconds}
                       value={f.service.constant_s}
                       onChange={(n) =>
                         params("service", { ...f.service, constant_s: n })
                       }
                     />
                     <Field
-                      label={it.fixedSeconds}
+                      label={t.fixedSeconds}
                       value={f.service.fixed_s}
                       onChange={(n) =>
                         params("service", { ...f.service, fixed_s: n })
                       }
                     />
                     <Field
-                      label={it.packageSeconds}
+                      label={t.packageSeconds}
                       value={f.service.per_package_s}
                       onChange={(n) =>
                         params("service", { ...f.service, per_package_s: n })
@@ -941,7 +965,7 @@ function App() {
                           <span className="category">{key}</span>
                           <div className="fields">
                             <Field
-                              label={it.baseRate}
+                              label={t.baseRate}
                               value={value.base_l_per_km}
                               step={0.001}
                               onChange={(n) =>
@@ -955,7 +979,7 @@ function App() {
                               }
                             />
                             <Field
-                              label={it.loadRate}
+                              label={t.loadRate}
                               value={value.load_l_per_km_kg}
                               step={0.0001}
                               onChange={(n) =>
@@ -986,10 +1010,10 @@ function App() {
                           })
                         }
                       />
-                      {it.idle}
+                      {t.idle}
                     </label>
                     <Field
-                      label={it.idleRate}
+                      label={t.idleRate}
                       value={f.fuel_model.idle_l_per_s}
                       step={0.0001}
                       onChange={(n) =>
@@ -1060,9 +1084,9 @@ function App() {
             <div className="config-actions">
               <span className="helper">
                 {dirty
-                  ? it.dirty
+                  ? t.dirty
                   : scenario
-                    ? it.immutable
+                    ? t.immutable
                     : "OSM → OSRM → VALIDATOR"}
               </span>
               <button
@@ -1071,20 +1095,20 @@ function App() {
                 onClick={prepare}
               >
                 <Layers3 size={15} />
-                {it.prepare}
+                {t.prepare}
               </button>
               <label className="field">
-                {it.policyLabel}
+                {t.policyLabel}
                 <select
-                  aria-label={it.policyLabel}
+                  aria-label={t.policyLabel}
                   value={policy}
                   disabled={active || busy}
                   onChange={(e) =>
                     setPolicy(e.target.value as "cpu" | "learned")
                   }
                 >
-                  <option value="cpu">{it.policyCpu}</option>
-                  <option value="learned">{it.policyLearned}</option>
+                  <option value="cpu">{t.policyCpu}</option>
+                  <option value="learned">{t.policyLearned}</option>
                 </select>
               </label>
               <button
@@ -1092,7 +1116,7 @@ function App() {
                 disabled={!preparedId || dirty || active || busy}
                 onClick={start}
               >
-                {busy ? it.loading : it.solve}
+                {busy ? t.loading : t.solve}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -1107,8 +1131,8 @@ function App() {
               <div className="toolbar">
                 <button
                   className={tool === "select" ? "selected" : ""}
-                  title={it.select}
-                  aria-label={it.select}
+                  title={t.select}
+                  aria-label={t.select}
                   onClick={() => setTool("select")}
                 >
                   <MousePointer2 size={15} />
@@ -1116,8 +1140,8 @@ function App() {
                 <button
                   disabled={!draft || active}
                   className={tool === "add" ? "selected" : ""}
-                  aria-label={it.add}
-                  title={it.add}
+                  aria-label={t.add}
+                  title={t.add}
                   onClick={() => setTool("add")}
                 >
                   <Plus size={17} />
@@ -1125,8 +1149,8 @@ function App() {
                 <button
                   disabled={!draft || !selected || active}
                   className={tool === "move" ? "selected" : ""}
-                  aria-label={it.move}
-                  title={it.move}
+                  aria-label={t.move}
+                  title={t.move}
                   onClick={() => setTool("move")}
                 >
                   <Move size={16} />
@@ -1154,14 +1178,14 @@ function App() {
                   <div className="empty-icon">
                     <Route size={30} />
                   </div>
-                  <h2>{it.empty}</h2>
-                  <p>{it.emptyText}</p>
+                  <h2>{t.empty}</h2>
+                  <p>{t.emptyText}</p>
                   <button
                     className="primary"
                     disabled={!activeCity?.installed || busy}
                     onClick={createDemo}
                   >
-                    {it.demo}
+                    {t.demo}
                     <ArrowRight size={16} />
                   </button>
                 </div>
@@ -1170,12 +1194,12 @@ function App() {
                 <div className="job-card">
                   <div>
                     <span className={`live-dot ${active ? "pulse" : ""}`} />
-                    <strong>{it.state[job.status]}</strong>
+                    <strong>{t.state[job.status]}</strong>
                     <span className="mono">{job.id.slice(0, 8)}</span>
                   </div>
                   <p>
                     {job.error ??
-                      it.reason[job.termination_reason ?? ""] ??
+                      t.reason[job.termination_reason ?? ""] ??
                       (job.kind === "prepare"
                         ? "Preparazione dati stradali"
                         : job.request?.policy === "learned"
@@ -1187,9 +1211,9 @@ function App() {
                   )}
                   {job.kind === "solve" &&
                     job.status === "completed" &&
-                    job.feasibility === "unknown" && <p>{it.noRoute}</p>}
+                    job.feasibility === "unknown" && <p>{t.noRoute}</p>}
                   {active && job.status === "queued" && (
-                    <p className="warning" style={{ fontSize: "0.8em" }}>{it.queuedWarning}</p>
+                    <p className="warning" style={{ fontSize: "0.8em" }}>{t.queuedWarning}</p>
                   )}
                   {active && progress?.total && (
                     <div className="progress">
@@ -1212,7 +1236,7 @@ function App() {
                       }
                     >
                       <Square size={11} />
-                      {it.cancel}
+                      {t.cancel}
                     </button>
                   )}
                 </div>
@@ -1222,25 +1246,25 @@ function App() {
               {[
                 {
                   icon: <Clock3 size={16} />,
-                  label: it.time,
+                  label: t.time,
                   value: metrics ? formatTime(metrics.fleet_elapsed_s) : "—",
                   unit: "min:s",
                 },
                 {
                   icon: <Flag size={16} />,
-                  label: it.completion,
+                  label: t.completion,
                   value: metrics ? formatTime(metrics.completion_s) : "—",
                   unit: "min:s",
                 },
                 {
                   icon: <Route size={16} />,
-                  label: it.distance,
+                  label: t.distance,
                   value: metrics ? number(metrics.distance_m / 1000) : "—",
                   unit: "km",
                 },
                 {
                   icon: <Activity size={16} />,
-                  label: it.fuel,
+                  label: t.fuel,
                   value: metrics ? number(metrics.estimated_fuel_l, 3) : "—",
                   unit:
                     validation?.fuel_label.includes("microsim_calibrated") ||
@@ -1272,7 +1296,7 @@ function App() {
                     }}
                   >
                     <Radio size={14} />
-                    {it.search}
+                    {t.search}
                   </button>
                   <button
                     className={mode === "route" ? "active" : ""}
@@ -1283,7 +1307,7 @@ function App() {
                     }}
                   >
                     <Truck size={15} />
-                    {it.route}
+                    {t.route}
                   </button>
                 </div>
                 <label className="check">
@@ -1295,7 +1319,7 @@ function App() {
                       setPlaying(false);
                     }}
                   />
-                  {it.reduce}
+                  {t.reduce}
                 </label>
               </div>
               <div className="replay-controls">
@@ -1305,7 +1329,7 @@ function App() {
                     reduced ||
                     (mode === "search" ? events.length === 0 : !run?.validation)
                   }
-                  aria-label={playing ? it.pause : it.play}
+                  aria-label={playing ? t.pause : t.play}
                   onClick={() => {
                     setFollowing(false);
                     if (mode === "search" && index === events.length - 1)
@@ -1321,8 +1345,8 @@ function App() {
                   {playing ? <Pause size={18} /> : <Play size={18} />}
                 </button>
                 <button
-                  title={it.next}
-                  aria-label={it.next}
+                  title={t.next}
+                  aria-label={t.next}
                   disabled={mode !== "search" || index >= events.length - 1}
                   onClick={() => {
                     setFollowing(false);
@@ -1332,7 +1356,7 @@ function App() {
                   <SkipForward size={16} />
                 </button>
                 <input
-                  aria-label={it.seek}
+                  aria-label={t.seek}
                   type="range"
                   min="0"
                   max={
@@ -1359,11 +1383,11 @@ function App() {
                     : formatTime(routeTime)}
                 </span>
                 <select
-                  aria-label={it.speed}
+                  aria-label={t.speed}
                   value={speed}
                   onChange={(e) => setSpeed(Number(e.target.value))}
                 >
-                  {[0.25, 0.5, 1, 2, 4, 8].map((s) => (
+                  {SPEED_OPTIONS.map((s) => (
                     <option value={s} key={s}>
                       {s}×
                     </option>
@@ -1372,20 +1396,20 @@ function App() {
               </div>
               <div className="replay-info">
                 <span>
-                  {mode === "search" ? it.unrecorded : it.interpolation}
+                  {mode === "search" ? t.unrecorded : t.interpolation}
                 </span>
                 <span className="mono">
                   {mode === "search"
-                    ? `${it.compute} ${number(currentEvent?.elapsed_s ?? 0, 2)} s`
-                    : `${it.simulation} ${scenario ? cityTime(scenario, routeTime) : formatTime(routeTime)} · ${scenario?.timezone ?? ""}`}
+                    ? `${t.compute} ${number(currentEvent?.elapsed_s ?? 0, 2)} s`
+                    : `${t.simulation} ${scenario ? cityTime(scenario, routeTime) : formatTime(routeTime)} · ${scenario?.timezone ?? ""}`}
                 </span>
               </div>
               {mode === "search" && (
                 <div className="event-bar">
                   <span className="event-kind">
-                    {currentEvent ? it.event[currentEvent.kind] : "—"}
+                    {currentEvent ? t.event[currentEvent.kind] : "—"}
                     {currentEvent?.payload.move_type
-                      ? ` · ${it.moveType[currentEvent.payload.move_type] ?? currentEvent.payload.move_type}`
+                      ? ` · ${t.moveType[currentEvent.payload.move_type] ?? currentEvent.payload.move_type}`
                       : ""}
                     {currentEvent?.payload.delta
                       ? ` / Δ ${number(currentEvent.payload.delta.fleet_elapsed_s)} s · ${number(currentEvent.payload.delta.estimated_fuel_l, 3)} L`
@@ -1396,17 +1420,17 @@ function App() {
                       className={!candidate ? "active" : ""}
                       onClick={() => setCandidate(false)}
                     >
-                      {it.best}
+                      {t.best}
                     </button>
                     <button
                       className={candidate ? "active" : ""}
                       onClick={() => setCandidate(true)}
                     >
-                      {it.candidate}
+                      {t.candidate}
                     </button>
                     <button
-                      title={it.nextBest}
-                      aria-label={it.nextBest}
+                      title={t.nextBest}
+                      aria-label={t.nextBest}
                       onClick={() => {
                         const i = events.findIndex(
                           (e, i) => i > index && e.kind === "feasible_best",
@@ -1431,13 +1455,13 @@ function App() {
               )}
               {display?.partial && (
                 <div className="candidate-note">
-                  {it.partial} · {validation?.violations.join("; ")}
+                  {t.partial} · {validation?.violations.join("; ")}
                 </div>
               )}
               {!replay.best &&
                 events.length > 0 &&
                 mode === "search" &&
-                !candidate && <div className="helper no-best">{it.noBest}</div>}
+                !candidate && <div className="helper no-best">{t.noBest}</div>}
               <Timelines
                 validation={validation}
                 start={scenario?.start_s ?? 0}
@@ -1449,7 +1473,7 @@ function App() {
               <div className="panel-title">
                 <span>
                   <MapPin size={16} />
-                  {it.node}
+                  {t.node}
                 </span>
                 <span className="step">02</span>
               </div>
@@ -1463,11 +1487,11 @@ function App() {
                   <div>
                     <h3>
                       {selected === "depot"
-                        ? it.depot
-                        : (selectedStop?.id ?? it.select)}
+                        ? t.depot
+                        : (selectedStop?.id ?? t.select)}
                     </h3>
                     <small>
-                      {selected === "depot" ? "PARTENZA E RITORNO" : it.window}
+                      {selected === "depot" ? "PARTENZA E RITORNO" : t.window}
                     </small>
                   </div>
                 </div>
@@ -1475,7 +1499,7 @@ function App() {
                   {draft && selected && (
                     <div className="fields">
                       <Field
-                        label={it.longitude}
+                        label={t.longitude}
                         value={
                           (selected === "depot"
                             ? draft.depot
@@ -1495,7 +1519,7 @@ function App() {
                         }
                       />
                       <Field
-                        label={it.latitude}
+                        label={t.latitude}
                         value={
                           (selected === "depot"
                             ? draft.depot
@@ -1520,30 +1544,30 @@ function App() {
                     <>
                       <div className="fields">
                         <Field
-                          label={it.windowOpen}
+                          label={t.windowOpen}
                           value={selectedStop.window_open_s}
                           onChange={(n) => stopField("window_open_s", n)}
                         />
                         <Field
-                          label={it.windowClose}
+                          label={t.windowClose}
                           value={selectedStop.window_close_s}
                           onChange={(n) => stopField("window_close_s", n)}
                         />
                       </div>
                       <Field
-                        label={it.packagesCount}
+                        label={t.packagesCount}
                         value={selectedStop.packages}
                         onChange={(n) => stopField("packages", n)}
                       />
                       <div className="fields">
                         <Field
-                          label={it.mass}
+                          label={t.mass}
                           value={selectedStop.mass_kg}
                           step={0.1}
                           onChange={(n) => stopField("mass_kg", n)}
                         />
                         <Field
-                          label={it.volume}
+                          label={t.volume}
                           value={selectedStop.volume_m3}
                           step={0.01}
                           onChange={(n) => stopField("volume_m3", n)}
@@ -1565,14 +1589,14 @@ function App() {
                         }}
                       >
                         <Trash2 size={13} />
-                        {it.remove}
+                        {t.remove}
                       </button>
                     </>
                   )}
                 </fieldset>
                 {selectedLocation && (
                   <div className="data-row">
-                    <span>{it.snap}</span>
+                    <span>{t.snap}</span>
                     <strong>
                       {number(selectedLocation.snap_distance_m)} m
                     </strong>
@@ -1581,14 +1605,14 @@ function App() {
                 {selectedVisit && (
                   <div className="visit-data">
                     {[
-                      [it.arrival, selectedVisit.arrival_s],
-                      [it.start, selectedVisit.service_start_s],
+                      [t.arrival, selectedVisit.arrival_s],
+                      [t.start, selectedVisit.service_start_s],
                       ...(selectedVisit.break_s
-                        ? [[it.driverBreak, selectedVisit.break_s]]
+                        ? [[t.driverBreak, selectedVisit.break_s]]
                         : []),
-                      [it.departure, selectedVisit.departure_s],
+                      [t.departure, selectedVisit.departure_s],
                       [
-                        it.slack,
+                        t.slack,
                         (selectedStop?.window_close_s ?? 0) -
                           selectedVisit.service_start_s,
                       ],
@@ -1599,14 +1623,14 @@ function App() {
                       </div>
                     ))}
                     <div className="data-row">
-                      <span>{it.load}</span>
+                      <span>{t.load}</span>
                       <strong>{number(selectedVisit.load_kg)} kg</strong>
                     </div>
                   </div>
                 )}
                 <div className="section-line">
                   <span>
-                    {it.stops.toUpperCase()} / {draft?.stops.length ?? 0}
+                    {t.stops.toUpperCase()} / {draft?.stops.length ?? 0}
                   </span>
                 </div>
                 <div className="stop-list">
@@ -1659,7 +1683,7 @@ function App() {
                 {validation?.fuel_label.includes("microsim_calibrated") ||
                 f?.fuel_model.calibration === "microsim_calibrated"
                   ? "Carburante calibrato da microsimulazione (M8)"
-                  : it.estimate}
+                  : t.estimate}
               </small>
             </section>
           </aside>
@@ -1668,7 +1692,7 @@ function App() {
           <div className="history-title">
             <span>
               <Database size={15} />
-              {it.history}
+              {t.history}
             </span>
             <small>SESSIONI PERSISTENTI</small>
             <button
@@ -1683,7 +1707,7 @@ function App() {
             </button>
           </div>
           {!history.length ? (
-            <p className="helper">{it.noJobs}</p>
+            <p className="helper">{t.noJobs}</p>
           ) : (
             <div className="history-list">
               {history.map((h) => (
@@ -1698,7 +1722,7 @@ function App() {
                       {h.kind === "prepare"
                         ? "Preparazione"
                         : h.request?.policy === "learned"
-                          ? it.policyLearned
+                          ? t.policyLearned
                           : "Ricerca CPU"}
                     </strong>
                     <small>
@@ -1706,7 +1730,7 @@ function App() {
                       {new Date(h.created * 1000).toLocaleString("it-IT")}
                     </small>
                   </span>
-                  <span className="history-status">{it.state[h.status]}</span>
+                  <span className="history-status">{t.state[h.status]}</span>
                   <ChevronRight size={15} />
                 </button>
               ))}
@@ -1733,10 +1757,10 @@ function App() {
           <span>
             <Check size={12} />
             VALIDATORE INDIPENDENTE <span className="footer-dot">·</span>{" "}
-            {it.notCertified}
+            {t.notCertified}
           </span>
           <span>
-            {it.performance}: {frameMs ? `${number(frameMs)} ms` : "—"}{" "}
+            {t.performance}: {frameMs ? `${number(frameMs)} ms` : "—"}{" "}
             <span className="footer-dot">·</span> LOCAL FIRST
           </span>
         </footer>
@@ -1751,26 +1775,27 @@ function Timelines({
   validation: Validation | null;
   start: number;
 }) {
+  const { t } = useI18n();
   const end = validation?.metrics.completion_s ?? 0;
   const kindLabel: Record<string, string> = {
-    travel: it.travel,
-    wait: it.wait,
-    service: it.service,
-    break: it.driverBreak,
+    travel: t.travel,
+    wait: t.wait,
+    service: t.service,
+    break: t.driverBreak,
   };
   return (
     <div className="timelines">
       <div className="timeline-title">
-        <span>{it.vehicles}</span>
+        <span>{t.vehicles}</span>
         <div>
           <i className="travel-key" />
-          {it.travel}
+          {t.travel}
           <i className="wait-key" />
-          {it.wait}
+          {t.wait}
           <i className="service-key" />
-          {it.service}
+          {t.service}
           <i className="break-key" />
-          {it.driverBreak}
+          {t.driverBreak}
         </div>
       </div>
       {validation?.vehicles.map((v, index) => {
@@ -1837,6 +1862,8 @@ function Timelines({
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <I18nProvider>
+      <App />
+    </I18nProvider>
   </React.StrictMode>,
 );

@@ -17,7 +17,7 @@ class Worker:
     def __init__(self,root='runs',data_root='data',provider_factory=OSRM):
         self.jobs=Jobs(root); self.registry=CityRegistry(data_root)
         self.provider_factory=provider_factory
-        self.lock=None
+        self.lock=None; self.shutdown=False
 
     def acquire(self):
         self.lock=(self.jobs.root/'worker.lock').open('a')
@@ -38,7 +38,7 @@ class Worker:
         job=self.jobs.claim()
         if job is None: return False
         id=job['id']; request=job['request']; started=time.monotonic(); last_metric=-1; omitted=0
-        def cancelled(): return self.jobs.get(id)['cancel_requested']
+        def cancelled(): return self.shutdown or self.jobs.get(id)['cancel_requested']
         def emit(kind,payload,elapsed=None):
             nonlocal last_metric,omitted
             now=time.monotonic()-started
@@ -65,7 +65,8 @@ class Worker:
                                    cancelled=cancelled,version=request.get('version',1),timeout_s=timeout_s)
                 else:
                     from .learn_train import train
-                    result=train(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+600),
+                    timeout_s = request.get('timeout_s')
+                    result=train(request['input'],request['output'],deadline=request.get('deadline',time.monotonic()+(timeout_s if timeout_s else 600)),
                                  cancelled=cancelled,try_gpu=request.get('try_gpu',True),
                                  epochs=request.get('epochs',50),version=request.get('version'))
                 status='completed' if result.get('status')=='completed' else 'failed'
@@ -148,14 +149,15 @@ class Worker:
     def run(self):
         self.acquire()
         import signal
-        stop_requested = False
         def _on_signal(signum, frame):
-            nonlocal stop_requested
-            stop_requested = True
+            # First signal cancels the in-flight job gracefully; a second one gets the original handler.
+            self.shutdown = True
+            signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
         old_sigterm = signal.signal(signal.SIGTERM, _on_signal)
         old_sigint = signal.signal(signal.SIGINT, _on_signal)
         try:
-            while not stop_requested and not (self.jobs.root/'worker.stop').exists():
+            while not self.shutdown and not (self.jobs.root/'worker.stop').exists():
                 if not self.execute_one(): time.sleep(.25)
         finally:
             signal.signal(signal.SIGTERM, old_sigterm)

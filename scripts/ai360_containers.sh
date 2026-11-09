@@ -71,9 +71,9 @@ start_service() {
     echo "Stopping existing vrp-m5-service..."
     podman rm -f vrp-m5-service >/dev/null 2>&1 || true
   fi
-  echo "Starting vrp-m5-service (GPU-accelerated, HTTPS)..."
+  # LAN-facing: default podman confinement, no GPU or relaxed-security flags (only the worker trains on the GPU).
+  echo "Starting vrp-m5-service (HTTPS)..."
   podman run -d --name vrp-m5-service --network host --restart always \
-    "${PODMAN_GPU_FLAGS[@]}" \
     -v "${REPO_DIR}:/app:z" \
     -v "${CONFIG_DIR}:/config:ro" \
     -w /app \

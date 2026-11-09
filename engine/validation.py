@@ -113,6 +113,8 @@ def _account(s, proposal, require_all):
                 or exact_volume > Decimal(str(v_cap['volume_m3']))):
             errors.append(f'{vehicle}: capacity exceeded at depot departure')
         explicit_pids = route.get('path_ids')
+        if explicit_pids is not None and not s.get('path_optimization'):
+            errors.append(f'{vehicle}: path_ids are not allowed under the fixed_directed_paths policy')
         if explicit_pids is not None and len(explicit_pids) != len(route['stop_ids']) + 1:
             errors.append(f'{vehicle}: path_ids length must match legs count')
         now = s['start_s']

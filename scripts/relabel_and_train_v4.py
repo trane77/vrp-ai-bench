@@ -1,4 +1,5 @@
 """Script to relabel existing trajectories with feature schema v4 and train on GPU."""
+import copy
 import time
 from pathlib import Path
 from engine.contracts import load_json
@@ -6,6 +7,10 @@ from engine.learning import FEATURE_SCHEMA_V4, signed
 from engine.learn_data import read_dataset, label_state
 from engine.learn_train import train, probe_gpu
 from engine.storage import write_json_atomic
+
+# Marks samples labeled under each trajectory's own time/fuel weights; earlier v4 files lack it and are relabeled.
+RELABEL_OBJECTIVE = 'per_trajectory_weights'
+
 
 def main():
     dataset_path = "runs/m4-remote/7ae57456-cb96-4aaf-8504-ab76de87e226/app/dataset/dataset.json"
@@ -25,7 +30,7 @@ def main():
         dest_file = v4_samples_dir / e['path']
         if dest_file.exists():
             sample = load_json(dest_file)
-            if sample.get('feature_schema') == FEATURE_SCHEMA_V4 and sample.get('groups') and len(sample['groups'][0]['rows'][0]['features']) == 48:
+            if sample.get('relabel_objective') == RELABEL_OBJECTIVE and sample.get('feature_schema') == FEATURE_SCHEMA_V4 and sample.get('groups') and len(sample['groups'][0]['rows'][0]['features']) == 48:
                 sample = signed(sample, 'samples_hash')
                 write_json_atomic(dest_file, sample, overwrite=True)
                 entries.append(dict(path=e['path'], samples_hash=sample['samples_hash'],
@@ -36,7 +41,9 @@ def main():
 
         src_file = Path(src_coll_path).parent / e['path']
         sample = load_json(src_file)
-        s = scenarios[sample['scenario_id']]
+        # Same per-trajectory objective override as learn_data.collect_trajectory.
+        s = copy.deepcopy(scenarios[sample['scenario_id']])
+        s['objective'].update(time_weight=sample['time_weight'], fuel_weight=1 - sample['time_weight'])
         
         # Relabel each group's state moves using version=4
         new_groups = []
@@ -45,6 +52,7 @@ def main():
             new_groups.append(relabeled_g)
             
         sample['feature_schema'] = FEATURE_SCHEMA_V4
+        sample['relabel_objective'] = RELABEL_OBJECTIVE
         sample['groups'] = new_groups
         sample = signed(sample, 'samples_hash')
         

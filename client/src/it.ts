@@ -110,6 +110,9 @@ export const it = {
   loading: "Caricamento…",
   noJobs: "Nessun job salvato.",
   performance: "Frame time misurato",
+  language: "Lingua",
+  rndLabTitle:
+    "Laboratorio R&D: Robustezza, Percorsi Alternativi, Microsimulazione e Modelli",
   view: "Vista analisi",
   network: "Rete stradale",
   unknown: "sconosciuta",
@@ -147,3 +150,5 @@ export const it = {
     execution_error: "Errore di esecuzione",
   } as Record<string, string>,
 };
+
+export type Translation = typeof it;

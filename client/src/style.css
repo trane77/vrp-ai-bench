@@ -233,6 +233,46 @@ header {
   color: #f7b862;
   max-width: 300px;
 }
+.lang-selector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2px 7px;
+  font-size: 10px;
+  color: #9aabbd;
+}
+.lang-icon {
+  color: #6d8299;
+  margin-right: 2px;
+}
+.lang-btn {
+  background: none;
+  border: none;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6d8299;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+.lang-btn:hover {
+  color: #c9d8e8;
+  background: rgba(255, 255, 255, 0.06);
+}
+.lang-btn.active {
+  background: rgba(60, 219, 183, 0.2);
+  color: var(--mint);
+}
+.lang-sep {
+  color: #435467;
+  font-size: 9px;
+  user-select: none;
+}
 .intro {
   display: flex;
   justify-content: space-between;

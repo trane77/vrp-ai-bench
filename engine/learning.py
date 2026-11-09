@@ -45,6 +45,10 @@ FEATURES_V4 = FEATURES_V3 + [
 ]
 FEATURE_SCHEMA_V4 = dict(version=4, names=FEATURES_V4, normalization='scale-invariant-bologna-v4')
 
+# version -> (feature schema, MLP architecture); the single source for training, export and inference.
+POLICY_SPECS = {1: (FEATURE_SCHEMA, [30,32,16,2]), 2: (FEATURE_SCHEMA_V2, [38,64,32,2]),
+                3: (FEATURE_SCHEMA_V3, [46,64,32,2]), 4: (FEATURE_SCHEMA_V4, [48,64,32,2])}
+
 
 class Features:
     def __init__(self, scenario, routes, validation, version=1):
@@ -73,7 +77,13 @@ class Features:
             self.capacities = [veh_caps.get(vid, scenario['capacity']) for vid in scenario['vehicle_ids']]
             self.route_delivery_mass = [sum(self.stops[v].get('delivery_mass_kg', 0) for v in route) for route in routes]
             self.leg_has_alts = {(leg['source'], leg['target']): bool(leg.get('alternatives')) for leg in scenario['legs']}
-            self.leg_segments = {(leg['source'], leg['target']): leg.get('segments', []) for leg in scenario['legs']}
+            self.leg_dist = {}  # (source, target) -> (slow/urban distance_m, total distance_m)
+            for leg in scenario['legs']:
+                segs = leg.get('segments', [])
+                total = sum(float(seg.get('distance_m', 0)) for seg in segs)
+                slow = sum(float(seg.get('distance_m', 0)) for seg in segs
+                           if 'slow' in seg.get('driving_category', '') or 'urban' in seg.get('driving_category', ''))
+                self.leg_dist[leg['source'], leg['target']] = (slow, total)
             brk = scenario.get('driver_break')
             self.has_driver_break = 1.0 if (brk and brk.get('enabled')) else 0.0
             if self.has_driver_break:
@@ -209,15 +219,8 @@ class Features:
 
             if affected_legs:
                 has_alts_ratio = sum(1.0 for leg in affected_legs if self.leg_has_alts.get(leg, False)) / len(affected_legs)
-                tot_dist = 0.0
-                slow_dist = 0.0
-                for leg in affected_legs:
-                    for seg in self.leg_segments.get(leg, []):
-                        d = float(seg.get('distance_m', 0))
-                        tot_dist += d
-                        cat = seg.get('driving_category', '')
-                        if 'slow' in cat or 'urban' in cat:
-                            slow_dist += d
+                slow_dist = sum(self.leg_dist.get(leg, (0.0, 0.0))[0] for leg in affected_legs)
+                tot_dist = sum(self.leg_dist.get(leg, (0.0, 0.0))[1] for leg in affected_legs)
                 traffic_ratio = (slow_dist / tot_dist) if tot_dist > 0.0 else 0.0
             else:
                 has_alts_ratio = 0.0
@@ -252,7 +255,7 @@ class Features:
             bbox_overlap_ratio = min(1.0, max(0.0, inter_area / union_area)) if union_area > 0 else 0.0
 
             x += [centroid_dist_norm, bbox_overlap_ratio]
-        expected_len = 30 if self.version == 1 else (38 if self.version == 2 else (46 if self.version == 3 else 48))
+        expected_len = POLICY_SPECS[self.version][1][0]
         if len(x) != expected_len or not all(math.isfinite(v) for v in x):
             raise InputError('nonfinite or incompatible feature vector')
         return x
@@ -273,32 +276,14 @@ class Policy:
         import numpy as np
         verify_hash(model, 'model_hash')
         schema_ver = model.get('schema_version')
-        if schema_ver == 1:
-            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA or model.get('architecture') != [30,32,16,2]:
-                raise InputError('incompatible learned checkpoint')
-            expected_shapes = ((30, 32), (32, 16), (16, 2))
-            self.feature_version = 1
-            self.input_dim = 30
-        elif schema_ver == 2:
-            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA_V2 or model.get('architecture') != [38,64,32,2]:
-                raise InputError('incompatible learned v2 checkpoint')
-            expected_shapes = ((38, 64), (64, 32), (32, 2))
-            self.feature_version = 2
-            self.input_dim = 38
-        elif schema_ver == 3:
-            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA_V3 or model.get('architecture') != [46,64,32,2]:
-                raise InputError('incompatible learned v3 checkpoint')
-            expected_shapes = ((46, 64), (64, 32), (32, 2))
-            self.feature_version = 3
-            self.input_dim = 46
-        elif schema_ver == 4:
-            if model.get('kind') != 'learned_policy' or model.get('feature_schema') != FEATURE_SCHEMA_V4 or model.get('architecture') != [48,64,32,2]:
-                raise InputError('incompatible learned v4 checkpoint')
-            expected_shapes = ((48, 64), (64, 32), (32, 2))
-            self.feature_version = 4
-            self.input_dim = 48
-        else:
+        if schema_ver not in POLICY_SPECS:
             raise InputError('incompatible learned checkpoint')
+        schema, arch = POLICY_SPECS[schema_ver]
+        if model.get('kind') != 'learned_policy' or model.get('feature_schema') != schema or model.get('architecture') != arch:
+            raise InputError(f'incompatible learned v{schema_ver} checkpoint')
+        expected_shapes = tuple(zip(arch, arch[1:]))
+        self.feature_version = schema_ver
+        self.input_dim = arch[0]
         self.model = model
         self.layers = []
         if len(model['layers']) != 3: raise InputError('expected three model layers')

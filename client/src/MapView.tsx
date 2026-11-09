@@ -6,7 +6,7 @@ import { MapboxOverlay } from "@deck.gl/mapbox";
 import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type { Coord, Draft, Scenario, Solution, Validation } from "./types";
 import { position } from "./replay";
-import { it } from "./it";
+import { useI18n } from "./i18n";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { colors } from "./colors";
 interface Props {
@@ -23,6 +23,7 @@ interface Props {
   onFrame: (ms: number) => void;
 }
 export default function MapView(props: Props) {
+  const { t } = useI18n();
   const container = useRef<HTMLDivElement>(null),
     map = useRef<maplibregl.Map | null>(null),
     overlay = useRef<MapboxOverlay | null>(null);
@@ -136,7 +137,10 @@ export default function MapView(props: Props) {
           (l) => l.source === ids[i] && l.target === target,
         );
         if (!leg?.reachable) return [];
-        const pid = route.path_ids?.[i];
+        // Intermediate replay states carry no route.path_ids; the validation records the chosen path per leg.
+        const pid =
+          props.validation?.vehicles.find((v) => v.vehicle_id === route.vehicle_id)?.legs[i]?.path_id ??
+          route.path_ids?.[i];
         const alt = pid ? leg.alternatives?.find((a) => a.id === pid) : undefined;
         return [{ path: alt?.geometry ?? leg.geometry, color: colors[index % 5] }];
       });
@@ -184,7 +188,7 @@ export default function MapView(props: Props) {
         fontWeight: 600,
       }),
     ];
-  }, [props.draft, props.scenario, props.solution, props.selected, props.tool]);
+  }, [props.draft, props.scenario, props.solution, props.validation, props.selected, props.tool]);
   useEffect(() => {
     const vehicles =
       props.elapsed !== null && props.scenario && props.validation
@@ -229,20 +233,20 @@ export default function MapView(props: Props) {
       <div className="map-grid" aria-hidden="true" />
       <div className="map-label">
         <span className="live-dot" />
-        {it.network}
+        {t.network}
         <small>OSM / OSRM · MLD</small>
       </div>
       {(offline || unsupported) && (
         <div className="map-warning" role="status">
-          {it.offlineMap}
+          {t.offlineMap}
         </div>
       )}
       {props.tool !== "select" && (
         <div className="map-hint">
-          {props.tool === "add" ? it.clickAdd : it.clickMove}
+          {props.tool === "add" ? t.clickAdd : t.clickMove}
           {props.tool === "add" && props.draft && (
             <button onClick={() => props.onPoint(props.draft!.depot)}>
-              {it.addAtDepot}
+              {t.addAtDepot}
             </button>
           )}
         </div>

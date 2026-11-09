@@ -77,9 +77,6 @@ class MicrosimRequest(BaseModel):
     signal_delay_scale: float=Field(default=1.0,ge=0.0,le=3.0)
 
 
-DESKTOP_ORIGINS = frozenset({'tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'})
-
-
 def same_origin(origin,host):
     try:
         parsed=urlparse(origin)
@@ -97,7 +94,7 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         return token is None or (value is not None and hmac.compare_digest(value,token))
 
     def origin_allowed(origin,host):
-        return same_origin(origin,host) or origin in allowed_origins or origin in DESKTOP_ORIGINS
+        return same_origin(origin,host) or origin in allowed_origins
 
     @app.middleware('http')
     async def protect_origin(request:Request,call_next):
@@ -106,14 +103,14 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         origin=request.headers.get('origin')
         if origin and not origin_allowed(origin,request.headers.get('host','')):
             return JSONResponse(status_code=403,content={'detail':'cross-origin request rejected'})
-        if request.method=='OPTIONS' and (origin in allowed_origins or origin in DESKTOP_ORIGINS):
+        if request.method=='OPTIONS' and (origin in allowed_origins):
             return JSONResponse(status_code=204,content=None,headers={'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'Content-Type, X-VRP-Token','Access-Control-Allow-Methods':'GET, POST, PUT, OPTIONS'})
         if token is not None and not authorized(request.headers.get('x-vrp-token')):
             return JSONResponse(status_code=401,content={'detail':'invalid or missing token'})
         if request.headers.get('content-length','0').isdigit() and int(request.headers.get('content-length','0'))>32*1024*1024:
             return JSONResponse(status_code=413,content={'detail':'request exceeds 32 MiB'})
         response=await call_next(request)
-        if origin in allowed_origins or origin in DESKTOP_ORIGINS: response.headers['Access-Control-Allow-Origin']=origin
+        if origin in allowed_origins: response.headers['Access-Control-Allow-Origin']=origin
         return response
 
     @app.exception_handler(InputError)
@@ -288,19 +285,8 @@ def create_app(root='runs',data_root='data',client_dir='client/dist',token=None,
         # Recompute witness routes & windows for the selected fleet/service configuration over the frozen road matrix.
         routes=[[] for _ in s['vehicle_ids']]
         for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
-        lookup={(leg['source'],leg['target']):leg for leg in s['legs']}
-        stops={stop['id']:stop for stop in s['stops']}
-        for route in routes:
-            now=s['start_s']; previous=s['depot_id']
-            for sid in route:
-                leg=lookup[previous,sid]
-                if not leg['reachable']: raise InputError('witness route contains an unreachable leg')
-                now+=leg['travel_s']; stop=stops[sid]
-                stop['window_open_s']=max(s['start_s'],now-300)
-                stop['window_close_s']=now+300
-                svc=s['service']
-                now+=(svc['constant_s'] if svc['mode']=='constant' else svc['fixed_s']+svc['per_package_s']*stop['packages'])
-                previous=sid
+        from .drafts import assign_witness_windows
+        assign_witness_windows(s,routes)
         s['generation']['witness_routes']=routes
         s=validate_scenario(s)
         if not validate_solution(s,proposal(s,routes))['feasible']:

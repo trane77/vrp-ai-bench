@@ -370,8 +370,8 @@ def evaluate_microsim(
     s_uncal = copy.deepcopy(s)
     if s_uncal["fuel_model"]["calibration"] != "uncalibrated":
         # Restore standard uncalibrated coefficients for the uncalibrated comparison column
-        from .drafts import DRAFT_PARAMS
-        s_uncal["fuel_model"] = copy.deepcopy(DRAFT_PARAMS["fuel_model"])
+        from .drafts import DEFAULT_FUEL_MODEL
+        s_uncal["fuel_model"] = copy.deepcopy(DEFAULT_FUEL_MODEL)
     rep_uncal = validate_solution(validate_scenario(s_uncal), solution)
 
     s_cal = copy.deepcopy(s)
@@ -571,13 +571,16 @@ def evaluate_microsim(
     )
 
 
-def parse_sumo_emission_xml(xml_text):
+def parse_sumo_emission_xml(xml_text, fuel_unit="auto"):
     """Parse an Eclipse SUMO `<emission-export>` XML document into per-vehicle fuel & travel summaries.
 
     In SUMO emission output, `fuel` is reported in mg/s (or ml/s depending on emissionClass);
     standard HBEFA3/4 SUMO diesel output reports `fuel` in ml/s (or mg/s when > 10). We normalize
-    automatically and record the parsed totals.
+    automatically and record the parsed totals. The unit is decided once per document (`fuel_unit`
+    "mg/s" or "ml/s", or "auto": mg/s if any sample exceeds 50), never per sample.
     """
+    if fuel_unit not in ("auto", "mg/s", "ml/s"):
+        raise InputError("fuel_unit must be auto, mg/s or ml/s")
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
@@ -587,6 +590,7 @@ def parse_sumo_emission_xml(xml_text):
         raise InputError("root XML element must be <emission-export>")
 
     vehicles = {}
+    samples = []  # (entry, raw_fuel); converted once the document-wide unit is known
     timesteps = 0
     for ts in root:
         ts_tag = ts.tag.split("}")[-1] if "}" in ts.tag else ts.tag
@@ -601,8 +605,6 @@ def parse_sumo_emission_xml(xml_text):
             speed = float(veh.attrib.get("speed", "0"))
             waiting = float(veh.attrib.get("waiting", "0"))
             raw_fuel = float(veh.attrib.get("fuel", "0"))
-            # If raw_fuel > 50, SUMO HBEFA reported mg/s (~832 mg/ml diesel); otherwise ml/s
-            fuel_l_step = (raw_fuel / 832_000.0) if raw_fuel > 50.0 else (raw_fuel / 1000.0)
             entry = vehicles.setdefault(
                 vid,
                 dict(vehicle_id=vid, travel_s=0, waiting_s=0.0, distance_m=0.0, fuel_l=0.0),
@@ -611,7 +613,13 @@ def parse_sumo_emission_xml(xml_text):
             if speed < 0.1 or waiting > 0:
                 entry["waiting_s"] += 1.0
             entry["distance_m"] += speed
-            entry["fuel_l"] += fuel_l_step
+            samples.append((entry, raw_fuel))
+
+    if fuel_unit == "auto":
+        fuel_unit = "mg/s" if any(raw > 50.0 for _, raw in samples) else "ml/s"
+    divisor = 832_000.0 if fuel_unit == "mg/s" else 1000.0  # ~832 mg/ml diesel
+    for entry, raw_fuel in samples:
+        entry["fuel_l"] += raw_fuel / divisor
 
     vehicle_list = [
         dict(
@@ -626,6 +634,7 @@ def parse_sumo_emission_xml(xml_text):
     ]
     return dict(
         simulator="sumo-emission-xml-v1",
+        fuel_unit=fuel_unit,
         timesteps=timesteps,
         vehicles=vehicle_list,
         totals=dict(

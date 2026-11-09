@@ -25,6 +25,11 @@ DRAFT = obj(schema_version={'type':'integer','const':1}, city_id=enum(*PRESETS),
     stops=array(DRAFT_STOP,maxItems=2000),
     parameters=DRAFT_PARAMS)
 
+MAX_PREPARED_STOPS=100  # matches SCENARIO_V2 stops maxItems; n^2 OSRM legs bound the cost
+DEFAULT_FUEL_MODEL=dict(version='linear-load-v1',kind='load_dependent',calibration='uncalibrated',
+    label='experimental estimate',categories={key:dict(base_l_per_km=.1,load_l_per_km_kg=.001)
+    for key in ['slow','urban','fast']},idle_policy='off',idle_l_per_s=0)
+
 
 def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',duration_cap_s=None):
     if type(seed)!=int or type(count)!=int or not 1<=count<=1500:
@@ -36,7 +41,7 @@ def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',du
     rng=random.Random(seed)
     center=manifest['center']
     stops=[]
-    max_radius = 1500 if count <= 100 else (3500 if count <= 400 else 7500)
+    max_radius = min(manifest['radius_m'], 1500 if count <= 100 else (3500 if count <= 400 else 4900))
     for i in range(count):
         angle=rng.random()*2*math.pi; radius=math.sqrt(rng.random())*max_radius
         point=[center[0]+math.cos(angle)*radius/(111320*math.cos(math.radians(center[1]))),
@@ -44,9 +49,7 @@ def make_draft(manifest,seed=42,count=20,*,vehicles=2,service_mode='constant',du
         packages=rng.randint(1,5)
         stops.append(dict(id=f'stop-{i+1:03}',coordinate=point,window_open_s=0,window_close_s=28800,
                           packages=packages,mass_kg=packages*2,volume_m3=packages*.01))
-    fuel=dict(version='linear-load-v1',kind='load_dependent',calibration='uncalibrated',
-              label='experimental estimate',categories={key:dict(base_l_per_km=.1,load_l_per_km_kg=.001)
-              for key in ['slow','urban','fast']},idle_policy='off',idle_l_per_s=0)
+    fuel=copy.deepcopy(DEFAULT_FUEL_MODEL)
     return dict(schema_version=1,city_id=manifest['city_id'],dataset_hash=manifest['manifest_hash'],
         seed=seed,mode='witness_demo',depot=center,stops=stops,
         parameters=dict(start_s=0,vehicle_ids=[f'van-{i+1}' for i in range(vehicles)],capacity=dict(mass_kg=1000,volume_m3=10),
@@ -76,9 +79,33 @@ def validate_draft(draft,manifest):
     return copy.deepcopy(draft)
 
 
+def assign_witness_windows(s,routes):
+    """Set each stop's window to ±300 s around the witness arrival, including service time and driver breaks."""
+    lookup={(leg['source'],leg['target']):leg for leg in s['legs']}
+    stops={stop['id']:stop for stop in s['stops']}
+    brk=s.get('driver_break')
+    brk_enabled=bool(brk and brk.get('enabled'))
+    service=s['service']
+    for route in routes:
+        now=s['start_s']; previous=s['depot_id']; work_s=0
+        for id in route:
+            leg=lookup[previous,id]
+            if not leg['reachable']: raise InputError('demo witness contains an unreachable leg')
+            now+=leg['travel_s']; work_s+=leg['travel_s']; stop=stops[id]
+            stop['window_open_s']=max(s['start_s'],now-300)
+            stop['window_close_s']=now+300
+            dur=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
+            now+=dur; work_s+=dur
+            if brk_enabled and work_s>=brk['threshold_s']:
+                now+=int(brk['duration_s']); work_s=0
+            previous=id
+
+
 def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=lambda:False):
     started=time.monotonic()
     d=validate_draft(draft,manifest)
+    if len(d['stops'])>MAX_PREPARED_STOPS:
+        raise InputError(f'road preparation supports at most {MAX_PREPARED_STOPS} stops (draft has {len(d["stops"])})')
     rng=random.Random(d['seed']); rejected=0
     def guard():
         if cancelled(): raise Cancelled('cancelled')
@@ -135,24 +162,7 @@ def prepare_draft(draft,manifest,provider,progress=lambda *args:None,cancelled=l
     if d['mode']=='witness_demo' or all(stop['window_open_s']==0 and stop['window_close_s']==28800 for stop in d['stops']):
         routes=[[] for _ in s['vehicle_ids']]
         for i,stop in enumerate(s['stops']): routes[i%len(routes)].append(stop['id'])
-        lookup={(leg['source'],leg['target']):leg for leg in legs}
-        stops={stop['id']:stop for stop in s['stops']}
-        brk=s.get('driver_break')
-        brk_enabled=bool(brk and brk.get('enabled'))
-        for route in routes:
-            now=s['start_s']; previous='depot'; work_s=0
-            for id in route:
-                leg=lookup[previous,id]
-                if not leg['reachable']: raise InputError('demo witness contains an unreachable leg')
-                now+=leg['travel_s']; work_s+=leg['travel_s']; stop=stops[id]
-                stop['window_open_s']=max(s['start_s'],now-300)
-                stop['window_close_s']=now+300
-                service=s['service']
-                dur=(service['constant_s'] if service['mode']=='constant' else service['fixed_s']+service['per_package_s']*stop['packages'])
-                now+=dur; work_s+=dur
-                if brk_enabled and work_s>=brk['threshold_s']:
-                    now+=int(brk['duration_s']); work_s=0
-                previous=id
+        assign_witness_windows(s,routes)
         s['generation']['witness_routes']=routes
         report=validate_solution(validate_scenario(s),proposal(s,routes))
         if not report['feasible']: raise InputError('demo witness violates configured constraints')

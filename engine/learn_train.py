@@ -4,44 +4,25 @@ import time
 from pathlib import Path
 
 from .contracts import InputError, load_json
-from .learning import FEATURE_SCHEMA, FEATURE_SCHEMA_V2, FEATURE_SCHEMA_V3, FEATURE_SCHEMA_V4, Policy, signed, verify_hash
+from .learning import POLICY_SPECS, Policy, signed, verify_hash
 from .storage import write_json_atomic
 
 
 def export_model(network, metadata, version=1):
     layers = [dict(weight=layer.weight.detach().cpu().tolist(), bias=layer.bias.detach().cpu().tolist())
               for layer in network if hasattr(layer,'weight')]
-    if version == 1:
-        arch = [30,32,16,2]
-        schema = FEATURE_SCHEMA
-    elif version == 2:
-        arch = [38,64,32,2]
-        schema = FEATURE_SCHEMA_V2
-    elif version == 3:
-        arch = [46,64,32,2]
-        schema = FEATURE_SCHEMA_V3
-    elif version == 4:
-        arch = [48,64,32,2]
-        schema = FEATURE_SCHEMA_V4
-    else:
+    if version not in POLICY_SPECS:
         raise InputError(f'unsupported model version: {version}')
+    schema, arch = POLICY_SPECS[version]
     return signed(dict(schema_version=version,kind='learned_policy',architecture=arch,
                        feature_schema=schema,layers=layers,metadata=metadata), 'model_hash')
 
 
 def make_network(version=1):
     import torch
-    if version == 4:
-        return torch.nn.Sequential(torch.nn.Linear(48,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
-                                   torch.nn.ReLU(),torch.nn.Linear(32,2))
-    if version == 3:
-        return torch.nn.Sequential(torch.nn.Linear(46,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
-                                   torch.nn.ReLU(),torch.nn.Linear(32,2))
-    if version == 2:
-        return torch.nn.Sequential(torch.nn.Linear(38,64),torch.nn.ReLU(),torch.nn.Linear(64,32),
-                                   torch.nn.ReLU(),torch.nn.Linear(32,2))
-    return torch.nn.Sequential(torch.nn.Linear(30,32),torch.nn.ReLU(),torch.nn.Linear(32,16),
-                               torch.nn.ReLU(),torch.nn.Linear(16,2))
+    arch = POLICY_SPECS[version][1]
+    return torch.nn.Sequential(torch.nn.Linear(arch[0],arch[1]),torch.nn.ReLU(),torch.nn.Linear(arch[1],arch[2]),
+                               torch.nn.ReLU(),torch.nn.Linear(arch[2],arch[3]))
 
 
 def probe_gpu(version=1):
@@ -52,7 +33,7 @@ def probe_gpu(version=1):
         if not torch.cuda.is_available(): raise RuntimeError('PyTorch reports no available GPU')
         net = make_network(version=version).to('cuda'); before = net[0].weight.detach().clone()
         optimizer = torch.optim.Adam(net.parameters(),lr=.001)
-        in_dim = 48 if version == 4 else (46 if version == 3 else (38 if version == 2 else 30))
+        in_dim = POLICY_SPECS[version][1][0]
         net(torch.ones(8,in_dim,device='cuda')).square().mean().backward(); optimizer.step(); torch.cuda.synchronize()
         if torch.equal(before,net[0].weight): raise RuntimeError('GPU probe did not update weights')
         value.update(status='passed',name=torch.cuda.get_device_name(0),forward_backward_update=True)
@@ -82,7 +63,6 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
     verify_hash(collection,'collection_hash')
     if collection['status'] != 'completed': raise InputError('incomplete sample collection; training stopped')
     groups = {'training':[], 'validation':[]}; identities = {}
-    schema_map = {1: FEATURE_SCHEMA, 2: FEATURE_SCHEMA_V2, 3: FEATURE_SCHEMA_V3, 4: FEATURE_SCHEMA_V4}
     detected_ver = version
     for entry in collection['entries']:
         samples = load_json(collection_path.parent/entry['path']); verify_hash(samples,'samples_hash')
@@ -90,7 +70,7 @@ def train(collection_path, directory, deadline=None, cancelled=lambda:False, try
         s_ver = s_schema.get('version')
         if detected_ver is None:
             detected_ver = s_ver
-        expected_schema = schema_map.get(detected_ver)
+        expected_schema = POLICY_SPECS.get(detected_ver, (None,))[0]
         if samples['samples_hash'] != entry['samples_hash'] or samples['feature_schema'] != expected_schema or samples['status'] != 'completed':
             raise InputError('incompatible samples')
         split = samples['split']

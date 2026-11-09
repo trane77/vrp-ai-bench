@@ -220,40 +220,24 @@ class CodeReviewFixTests(unittest.TestCase):
         self.assertEqual(parsed["vehicles"][0]["waiting_s"], 1.0)
         self.assertEqual(parsed["vehicles"][0]["distance_m"], 10.0)
 
-    def test_service_desktop_origins_allowed(self):
+    def test_service_desktop_origins_opt_in(self):
         from fastapi.testclient import TestClient
         from engine.service import create_app
 
         with tempfile.TemporaryDirectory() as tmp:
-            app = create_app(root=tmp, data_root="data")
-            client = TestClient(app, base_url="http://localhost:8000")
+            denied = TestClient(create_app(root=tmp, data_root="data"), base_url="http://localhost:8000")
+            res = denied.get("/api/v1/health", headers={"Origin": "tauri://localhost"})
+            self.assertEqual(res.status_code, 403)
 
-            # Desktop Tauri origin in OPTIONS (CORS preflight)
-            res = client.options(
-                "/api/v1/health",
-                headers={
-                    "Origin": "tauri://localhost",
-                    "Access-Control-Request-Method": "GET",
-                },
-            )
+            app = create_app(root=tmp, data_root="data", allowed_origins=("tauri://localhost",))
+            client = TestClient(app, base_url="http://localhost:8000")
+            res = client.options("/api/v1/health", headers={
+                "Origin": "tauri://localhost", "Access-Control-Request-Method": "GET"})
             self.assertEqual(res.status_code, 204)
             self.assertEqual(res.headers.get("access-control-allow-origin"), "tauri://localhost")
-
-            # Desktop http://tauri.localhost
-            res2 = client.options(
-                "/api/v1/health",
-                headers={
-                    "Origin": "http://tauri.localhost",
-                    "Access-Control-Request-Method": "GET",
-                },
-            )
-            self.assertEqual(res2.status_code, 204)
-            self.assertEqual(res2.headers.get("access-control-allow-origin"), "http://tauri.localhost")
-
-            # GET with tauri://localhost
-            res3 = client.get("/api/v1/health", headers={"Origin": "tauri://localhost"})
-            self.assertEqual(res3.status_code, 200)
-            self.assertEqual(res3.headers.get("access-control-allow-origin"), "tauri://localhost")
+            res = client.get("/api/v1/health", headers={"Origin": "tauri://localhost"})
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.headers.get("access-control-allow-origin"), "tauri://localhost")
 
 
 if __name__ == "__main__":
